@@ -6,53 +6,71 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleLogin = () => {
-    if (password === "smithaslut") {
+  const correctPassword = "smithaslut"; // <-- Change your password here
+
+  function login() {
+    if (password.trim() === correctPassword) {
       localStorage.setItem("gallery-auth", "true");
+      
+      // THE FIX: Natively force the mobile browser to load the next URL
       window.location.href = "/albums";
     } else {
-      setError("Wrong password");
+      setError("Incorrect password");
     }
-  };
+  }
 
   return (
-    <main
-      style={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        gap: "20px",
-      }}
-    >
-      <h1>🔐 Private Photo Gallery</h1>
+    <main className="login-page">
 
-      <input
-        type="password"
-        placeholder="Enter Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        style={{
-          padding: "12px",
-          width: "300px",
-          border: "1px solid #ccc",
-          borderRadius: "8px",
-        }}
-      />
+      <div className="bg-circle bg1"></div>
+      <div className="bg-circle bg2"></div>
+      <div className="bg-circle bg3"></div>
 
-      <button
-        onClick={handleLogin}
-        style={{
-          padding: "12px 20px",
-          borderRadius: "8px",
-          cursor: "pointer",
-        }}
-      >
-        Login
-      </button>
+      <div className="glass-card">
 
-      {error && <p>{error}</p>}
+        <div className="logo">
+          <div className="logo-ring"></div>
+          <div className="logo-dot"></div>
+        </div>
+
+        <h1>Private Gallery</h1>
+
+        <p>
+          Secure access to your private photo collection.
+        </p>
+
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <input
+            type="password"
+            placeholder="Enter Password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault(); 
+                login();
+              }
+            }}
+          />
+
+          {error && <span className="error">{error}</span>}
+
+          <button 
+            type="button" 
+            onClick={(e) => { 
+              e.preventDefault(); 
+              login(); 
+            }}
+          >
+            Enter Gallery
+          </button>
+        </div>
+
+      </div>
+
     </main>
   );
 }
