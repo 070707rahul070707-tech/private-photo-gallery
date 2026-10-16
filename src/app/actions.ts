@@ -32,12 +32,11 @@ export async function verifyPassword(password: string) {
     (await cookies()).set("gallery-auth-token", "authenticated", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: "lax", // THE FIX: Allows the cookie to survive the redirect
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
     
-    // THE FIX: The server handles the page change, completely eliminating the timing glitch.
     redirect("/albums");
   }
   
