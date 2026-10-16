@@ -13,13 +13,11 @@ export default function Home() {
     setIsLoading(true);
     setError("");
 
+    // The server will instantly redirect us if correct.
     const result = await verifyPassword(password);
 
-    if (result.success) {
-      // THE FIX: We use a hard redirect instead of the Next.js router.
-      // This forces the browser to wait, save the cookie, and present it to the server.
-      window.location.href = "/albums";
-    } else {
+    // If the code reaches this line, the server did NOT redirect us, meaning it was wrong.
+    if (result && !result.success) {
       setError("Incorrect password");
       setIsLoading(false);
     }

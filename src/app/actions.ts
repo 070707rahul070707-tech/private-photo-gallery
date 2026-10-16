@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -8,25 +9,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// SMARTER HELPER: Extracts the exact filename even from old, messy public URLs
 function getFilePath(urlOrPath: string | null | undefined) {
   if (!urlOrPath) return null;
-  
   try {
-    // If it is an old full URL, grab just the very last part (the filename)
     if (urlOrPath.startsWith("http")) {
       const parts = new URL(urlOrPath).pathname.split('/');
       return decodeURIComponent(parts[parts.length - 1]);
     }
-    // If it has the old public folder path in it, strip it out
     if (urlOrPath.includes("/public/photos/")) {
       return decodeURIComponent(urlOrPath.split("/public/photos/")[1]);
     }
-  } catch (e) {
-    // Failsafe
-  }
-  
-  // If it's already a clean filename, just return it
+  } catch (e) {}
   return decodeURIComponent(urlOrPath);
 }
 
@@ -43,8 +36,11 @@ export async function verifyPassword(password: string) {
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
-    return { success: true };
+    
+    // THE FIX: The server handles the page change, completely eliminating the timing glitch.
+    redirect("/albums");
   }
+  
   return { success: false };
 }
 
@@ -66,21 +62,18 @@ export async function getAlbumsSecure() {
     albumsData.map(async (album) => {
       let imagePath = getFilePath(album.cover_url);
 
-      // Fallback to first photo if no cover is set
       if (!imagePath) {
         const { data: mediaData } = await supabase
           .from("photos")
-          .select("filename, image_url") // Safely request both
+          .select("filename, image_url") 
           .eq("album_id", album.id)
           .order("created_at", { ascending: true })
           .limit(1)
           .single();
         
-        // Prefer the clean filename if it exists, otherwise clean the old URL
         imagePath = mediaData?.filename ? mediaData.filename : getFilePath(mediaData?.image_url);
       }
 
-      // Generate a highly secure Signed URL valid for 1 hour
       let signedUrl = null;
       if (imagePath) {
         const { data } = await supabase.storage
