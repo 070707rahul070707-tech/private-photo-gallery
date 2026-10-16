@@ -1,103 +1,161 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { supabase } from "@/lib/supabase";
-import { ArrowLeft, Upload, Trash2, X, ChevronLeft, ChevronRight, Loader2, Image as ImageIcon } from "lucide-react";
+import { 
+  ArrowLeft, Upload, Trash2, X, ChevronLeft, 
+  ChevronRight, Loader2, Image as ImageIcon, Play, ImagePlus, Move, ListOrdered, Save
+} from "lucide-react";
+import { 
+  getAlbumMediaSecure, 
+  uploadMediaSecure, 
+  deleteMediaSecure, 
+  setAlbumCoverSecure, 
+  saveMediaOrderSecure 
+} from "./actions";
+
+interface MediaItem {
+  id: string;
+  album_id: string;
+  url: string;
+  filename: string;
+  created_at: string;
+}
 
 export default function AlbumPage() {
   const [files, setFiles] = useState<FileList | null>(null);
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [media, setMedia] = useState<MediaItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSettingCover, setIsSettingCover] = useState(false);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
   
+  const [isReorderMode, setIsReorderMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+  const isDragging = useRef(false);
 
-  async function loadPhotos() {
+  const isVideo = (filename: string) => {
+    return /\.(mp4|webm|ogg|mov|mkv)$/i.test(filename || "");
+  };
+
+  async function loadMedia() {
     const albumId = new URLSearchParams(window.location.search).get("id");
     if (!albumId) return;
 
-    const { data, error } = await supabase
-      .from("photos")
-      .select("*")
-      .eq("album_id", albumId);
-
-    if (error) {
-      console.error(error);
-      setIsLoading(false);
-      return;
-    }
-
-    setPhotos(data.map((photo) => photo.image_url));
+    const secureMedia = await getAlbumMediaSecure(albumId);
+    setMedia(secureMedia);
     setIsLoading(false);
   }
 
-  async function uploadPhoto() {
+  async function uploadMedia() {
     if (!files || files.length === 0) return;
     setIsUploading(true);
 
     const albumId = new URLSearchParams(window.location.search).get("id");
+    if (!albumId) return;
 
-    for (const file of Array.from(files)) {
-      const fileName = `${Date.now()}-${file.name}`;
+    // Use FormData to send files to the secure server action
+    const formData = new FormData();
+    Array.from(files).forEach(file => {
+      formData.append("files", file);
+    });
 
-      const { error } = await supabase.storage
-        .from("photos")
-        .upload(fileName, file);
-
-      if (error) continue;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage
-        .from("photos")
-        .getPublicUrl(fileName);
-
-      await supabase
-        .from("photos")
-        .insert([
-          {
-            album_id: albumId,
-            filename: fileName,
-            image_url: publicUrl,
-          },
-        ]);
-    }
+    await uploadMediaSecure(formData, albumId);
 
     setFiles(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    await loadPhotos();
+    await loadMedia();
     setIsUploading(false);
   }
 
-  async function deletePhoto() {
+  async function deleteMedia() {
     if (selectedIndex === null) return;
+    const item = media[selectedIndex];
+    if (!item || !item.filename) return;
 
-    const url = photos[selectedIndex];
-    const fileName = url.split("/").pop();
-
-    if (!fileName) return;
-
-    const { error } = await supabase.storage
-      .from("photos")
-      .remove([fileName]);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
+    setIsLoading(true);
     setSelectedIndex(null);
-    await loadPhotos();
+    
+    await deleteMediaSecure(item.filename);
+    await loadMedia();
   }
 
-  useEffect(() => {
-    const auth = localStorage.getItem("gallery-auth");
-    if (auth !== "true") {
-      window.location.href = "/";
+  async function handleSetAsCover() {
+    if (selectedIndex === null) return;
+    
+    const albumId = new URLSearchParams(window.location.search).get("id");
+    if (!albumId) return;
+
+    setIsSettingCover(true);
+    const item = media[selectedIndex];
+
+    const { success } = await setAlbumCoverSecure(albumId, item.filename);
+
+    setIsSettingCover(false);
+    if (success) {
+      alert("Album cover successfully updated!");
+    } else {
+      alert("Failed to update album cover.");
+    }
+  }
+
+  const handleDragStart = (index: number) => {
+    if (!isReorderMode) return;
+    isDragging.current = true;
+    dragItem.current = index;
+  };
+
+  const handleDragEnter = (index: number) => {
+    if (!isReorderMode) return;
+    dragOverItem.current = index;
+  };
+
+  const handleDragEnd = () => {
+    if (!isReorderMode) return;
+    if (dragItem.current === null || dragOverItem.current === null) {
+      setTimeout(() => { isDragging.current = false; }, 100);
       return;
     }
-    loadPhotos();
+
+    const newMedia = [...media];
+    const draggedItemContent = newMedia[dragItem.current];
+    newMedia.splice(dragItem.current, 1);
+    newMedia.splice(dragOverItem.current, 0, draggedItemContent);
+
+    dragItem.current = null;
+    dragOverItem.current = null;
+    
+    setMedia(newMedia);
+    setTimeout(() => { isDragging.current = false; }, 100);
+  };
+
+  const handleSaveOrder = async () => {
+    setIsSavingOrder(true);
+    const now = Date.now();
+    
+    const orderItems = media.map((item, index) => ({
+      id: item.id,
+      created_at: new Date(now + index * 1000).toISOString(),
+    }));
+
+    await saveMediaOrderSecure(orderItems);
+    
+    setIsSavingOrder(false);
+    setIsReorderMode(false);
+    await loadMedia(); 
+  };
+
+  const handleCancelReorder = async () => {
+    setIsReorderMode(false);
+    setIsLoading(true);
+    await loadMedia(); 
+  };
+
+  useEffect(() => {
+    loadMedia();
   }, []);
 
   if (isLoading) {
@@ -140,86 +198,171 @@ export default function AlbumPage() {
           <div>
             <button
               onClick={() => { window.location.href = "/albums"; }}
-              className="flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-4 group w-fit"
+              className={`flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-4 group w-fit ${isReorderMode ? 'opacity-50 pointer-events-none' : ''}`}
             >
               <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
               Back to Albums
             </button>
             <h1 className="text-4xl font-bold tracking-tight text-white flex items-center gap-3">
               <ImageIcon className="w-8 h-8 text-white/30" />
-              Album Photos
+              {isReorderMode ? "Rearrange Photos" : "Album Media"}
+              {isSavingOrder && <Loader2 className="w-5 h-5 text-white/40 animate-spin ml-2" />}
             </h1>
           </div>
 
-          {/* Upload Controls */}
           <div className="flex items-center gap-3 bg-transparent p-2 rounded-[24px] border border-white/10 backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
-            <input
-              type="file"
-              multiple
-              ref={fileInputRef}
-              onChange={(e) => setFiles(e.target.files)}
-              className="hidden"
-              id="file-upload"
-            />
-            <label 
-              htmlFor="file-upload"
-              className="px-6 py-3 rounded-2xl font-medium text-white/70 hover:text-white hover:bg-white/5 transition-all cursor-pointer border border-transparent hover:border-white/10"
-            >
-              {files && files.length > 0 ? `${files.length} selected` : "Select Files"}
-            </label>
-            <button
-              onClick={uploadPhoto}
-              disabled={isUploading || !files || files.length === 0}
-              className="group flex items-center gap-2 bg-white text-black px-6 py-3 rounded-2xl font-bold hover:bg-[#e5e5e5] hover:-translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all"
-            >
-              {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-              Upload
-            </button>
+            
+            {isReorderMode ? (
+              <>
+                <button
+                  onClick={handleCancelReorder}
+                  className="px-6 py-3 rounded-2xl font-medium text-white/70 hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveOrder}
+                  disabled={isSavingOrder}
+                  className="group flex items-center gap-2 bg-green-500 text-white px-6 py-3 rounded-2xl font-bold hover:bg-green-600 hover:-translate-y-[2px] disabled:opacity-50 transition-all shadow-lg shadow-green-500/20"
+                >
+                  {isSavingOrder ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                  Save Order
+                </button>
+              </>
+            ) : (
+              <>
+                {media.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setIsReorderMode(true)}
+                      className="p-3 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition-all group"
+                      title="Rearrange Photos"
+                    >
+                      <ListOrdered className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                    </button>
+                    <div className="w-px h-8 bg-white/10 mx-1"></div>
+                  </>
+                )}
+
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  ref={fileInputRef}
+                  onChange={(e) => setFiles(e.target.files)}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label 
+                  htmlFor="file-upload"
+                  className="px-6 py-3 rounded-2xl font-medium text-white/70 hover:text-white hover:bg-white/5 transition-all cursor-pointer border border-transparent hover:border-white/10"
+                >
+                  {files && files.length > 0 ? `${files.length} selected` : "Select Media"}
+                </label>
+                <button
+                  onClick={uploadMedia}
+                  disabled={isUploading || !files || files.length === 0}
+                  className="group flex items-center gap-2 bg-white text-black px-6 py-3 rounded-2xl font-bold hover:bg-[#e5e5e5] hover:-translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all"
+                >
+                  {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                  Upload
+                </button>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Photo Grid */}
-        {photos.length === 0 ? (
+        {/* Media Grid */}
+        {media.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 border border-white/10 bg-transparent rounded-[32px] backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
             <ImageIcon className="w-12 h-12 text-white/30 mb-4" />
-            <p className="text-white/60 font-light">No photos in this album yet.</p>
+            <p className="text-white/60 font-light">No media in this album yet.</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {photos.map((url, index) => (
-              <div 
-                key={index}
-                onClick={() => setSelectedIndex(index)}
-                // Photo cards now match the translucent aesthetic
-                className="group relative aspect-square rounded-[24px] overflow-hidden cursor-pointer bg-transparent border border-white/10 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.1)] hover:border-white/20 transition-all duration-500"
-              >
-                <img
-                  src={url}
-                  alt={`Photo ${index}`}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-300 flex items-center justify-center">
-                  <div className="opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
-                    <div className="p-3 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white">
-                      <ImageIcon className="w-6 h-6" />
+            {media.map((item, index) => {
+              const video = isVideo(item.filename);
+              return (
+                <div 
+                  key={item.id}
+                  draggable={isReorderMode}
+                  onDragStart={() => handleDragStart(index)}
+                  onDragEnter={() => handleDragEnter(index)}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={(e) => e.preventDefault()}
+                  onClick={() => {
+                    if (isReorderMode) return;
+                    if (isDragging.current) return;
+                    setSelectedIndex(index);
+                  }}
+                  className={`group relative aspect-square rounded-[24px] overflow-hidden bg-black/40 border backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.1)] transition-all duration-500 flex items-center justify-center ${
+                    isReorderMode 
+                      ? "cursor-grab active:cursor-grabbing border-blue-500/40 hover:border-blue-400 scale-95 hover:scale-100" 
+                      : "cursor-pointer border-white/10 hover:border-white/30"
+                  }`}
+                >
+                  {video ? (
+                    <>
+                      <video 
+                        src={item.url} 
+                        className={`w-full h-full object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-110'}`} 
+                        muted 
+                        playsInline
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white/90">
+                          <Play className="w-8 h-8 fill-white/80" />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <img
+                      src={item.url}
+                      alt={`Media ${index}`}
+                      className={`w-full h-full object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-110'}`}
+                    />
+                  )}
+                  
+                  {isReorderMode ? (
+                    <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center pointer-events-none border-2 border-transparent group-active:border-blue-500/50 rounded-[24px]">
+                      <Move className="w-8 h-8 text-white drop-shadow-md" />
                     </div>
-                  </div>
+                  ) : (
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-300 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
+                      <div className="transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                        <div className="p-3 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white">
+                          {video ? <Play className="w-6 h-6 fill-white" /> : <ImageIcon className="w-6 h-6" />}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Fullscreen Photo Lightbox */}
+      {/* Fullscreen Media Lightbox */}
       {selectedIndex !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-2xl animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-2xl animate-in fade-in duration-200">
           
           <div className="absolute top-6 right-6 flex items-center gap-4 z-50">
+            {!isVideo(media[selectedIndex].filename) && (
+              <button 
+                onClick={handleSetAsCover}
+                disabled={isSettingCover}
+                className="p-3 rounded-full bg-black/40 border border-white/10 text-white/70 hover:text-blue-400 hover:border-blue-500/50 hover:bg-blue-500/10 backdrop-blur-xl transition-all group disabled:opacity-50"
+                title="Set as Album Cover"
+              >
+                {isSettingCover ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImagePlus className="w-5 h-5" />}
+              </button>
+            )}
+
             <button 
-              onClick={deletePhoto}
+              onClick={deleteMedia}
               className="p-3 rounded-full bg-black/40 border border-white/10 text-white/70 hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 backdrop-blur-xl transition-all group"
-              title="Delete Photo"
+              title="Delete Media"
             >
               <Trash2 className="w-5 h-5" />
             </button>
@@ -235,23 +378,33 @@ export default function AlbumPage() {
             className="absolute left-6 p-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white backdrop-blur-xl transition-all z-50"
             onClick={(e) => {
               e.stopPropagation();
-              setSelectedIndex(selectedIndex > 0 ? selectedIndex - 1 : photos.length - 1);
+              setSelectedIndex(selectedIndex > 0 ? selectedIndex - 1 : media.length - 1);
             }}
           >
             <ChevronLeft className="w-8 h-8" />
           </button>
 
-          <img
-            src={photos[selectedIndex]}
-            alt="Fullscreen view"
-            className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-300"
-          />
+          {isVideo(media[selectedIndex].filename) ? (
+            <video
+              src={media[selectedIndex].url}
+              controls
+              autoPlay
+              playsInline
+              className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-300"
+            />
+          ) : (
+            <img
+              src={media[selectedIndex].url}
+              alt="Fullscreen view"
+              className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-300"
+            />
+          )}
 
           <button
             className="absolute right-6 p-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white backdrop-blur-xl transition-all z-50"
             onClick={(e) => {
               e.stopPropagation();
-              setSelectedIndex(selectedIndex < photos.length - 1 ? selectedIndex + 1 : 0);
+              setSelectedIndex(selectedIndex < media.length - 1 ? selectedIndex + 1 : 0);
             }}
           >
             <ChevronRight className="w-8 h-8" />

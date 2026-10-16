@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Folder, Plus, Edit2, Trash2, 
-  X, Loader2, LogOut
+  X, Loader2, LogOut, Image as ImageIcon
 } from "lucide-react";
 import { supabase } from "@/lib/supabase"; 
 
@@ -12,6 +12,7 @@ interface Album {
   id: string;
   name: string;
   created_at: string;
+  cover_url?: string | null;
 }
 
 export default function AlbumsPage() {
@@ -26,11 +27,12 @@ export default function AlbumsPage() {
   const [newAlbumName, setNewAlbumName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Strict Authentication Check & Direct Link Guard
   useEffect(() => {
     const checkAuthAndFetch = async () => {
       const authStatus = localStorage.getItem("gallery-auth");
       if (authStatus !== "true") {
-        router.push("/");
+        window.location.href = "/";
         return;
       }
       await fetchAlbums();
@@ -40,12 +42,38 @@ export default function AlbumsPage() {
   }, [router]);
 
   const fetchAlbums = async () => {
-    const { data, error } = await supabase
+    // 🚨 Explicitly demand the cover_url column from Supabase to bypass the cache!
+    const { data: albumsData, error } = await supabase
       .from("albums")
-      .select("*")
+      .select("id, name, created_at, cover_url") 
       .order("created_at", { ascending: false });
 
-    if (!error && data) setAlbums(data);
+    if (!error && albumsData) {
+      const albumsWithCovers = await Promise.all(
+        albumsData.map(async (album) => {
+          // 1. If you manually set a cover, USE IT IMMEDIATELY
+          if (album.cover_url && album.cover_url !== "") {
+            return album;
+          }
+          
+          // 2. If no custom cover exists, fallback to the 1st photo
+          const { data: mediaData } = await supabase
+            .from("photos")
+            .select("image_url")
+            .eq("album_id", album.id)
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .single();
+
+          return {
+            ...album,
+            cover_url: mediaData?.image_url || null,
+          };
+        })
+      );
+
+      setAlbums(albumsWithCovers);
+    }
   };
 
   const handleCreateAlbum = async (e: React.FormEvent) => {
@@ -105,7 +133,7 @@ export default function AlbumsPage() {
 
   const handleLogout = () => {
     localStorage.removeItem("gallery-auth");
-    router.push("/");
+    window.location.href = "/";
   };
 
   const handleMenuClick = (e: React.MouseEvent, album: Album, action: 'rename' | 'delete') => {
@@ -121,18 +149,14 @@ export default function AlbumsPage() {
 
   if (isLoading) {
     return (
-      <div 
-        className="min-h-screen flex items-center justify-center bg-[#050505]"
-      >
+      <div className="min-h-screen flex items-center justify-center bg-[#050505]">
         <Loader2 className="w-8 h-8 text-white/50 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div 
-      className="w-full h-screen overflow-y-auto overflow-x-hidden text-white relative font-sans selection:bg-white/20 bg-[#050505]"
-    >
+    <div className="w-full h-screen overflow-y-auto overflow-x-hidden text-white relative font-sans selection:bg-white/20 bg-[#050505]">
       
       {/* Premium Twinkling Background */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
@@ -166,14 +190,17 @@ export default function AlbumsPage() {
             <p className="text-[#9ca3af] font-light tracking-wide">Organize your private memories.</p>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Create Button */}
             <button 
               onClick={() => setIsCreateOpen(true)}
-              className="group flex items-center gap-2 bg-transparent hover:bg-white/5 border border-white/10 backdrop-blur-md px-6 py-3 rounded-full transition-all duration-300 shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
+              className="group flex items-center gap-2 bg-transparent hover:bg-white/5 border border-white/10 backdrop-blur-md px-5 sm:px-6 py-3 rounded-full transition-all duration-300 shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
             >
               <Plus className="w-5 h-5 transition-transform group-hover:rotate-90 duration-300 text-white" />
-              <span className="font-medium tracking-wide text-white">Create</span>
+              <span className="font-medium tracking-wide text-white text-sm sm:text-base">Create</span>
             </button>
+            
+            {/* Logout Button */}
             <button 
               onClick={handleLogout}
               className="p-3 rounded-full bg-transparent hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 text-white hover:text-red-400 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
@@ -196,32 +223,44 @@ export default function AlbumsPage() {
               <div 
                 key={album.id}
                 onClick={() => router.push(`/album?id=${album.id}`)}
-                // FIX: Made the cards mostly transparent (bg-transparent) with a beautiful frosted blur
-                className="group cursor-pointer relative aspect-square rounded-[32px] bg-transparent border border-white/10 backdrop-blur-md overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:bg-white/5 hover:border-white/20 shadow-[0_4px_30px_rgba(0,0,0,0.1)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.4)]"
+                className="group cursor-pointer relative aspect-square rounded-[32px] bg-black/40 border border-white/10 backdrop-blur-md overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:border-white/30 shadow-[0_4px_30px_rgba(0,0,0,0.1)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.6)]"
               >
-                <div className="absolute inset-0 p-6 flex flex-col justify-end z-10 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none">
+                {/* Album Cover Photo OR Folder Icon Fallback */}
+                {album.cover_url ? (
+                  <img 
+                    src={album.cover_url} 
+                    alt={album.name} 
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" 
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <Folder className="w-16 h-16 text-white/20 group-hover:scale-110 group-hover:text-white/40 transition-all duration-500" />
+                  </div>
+                )}
+
+                {/* Dark Gradient Overlay for Readability */}
+                <div className="absolute inset-0 p-6 flex flex-col justify-end z-10 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none">
                   <h3 className="text-xl font-medium tracking-tight text-white mb-1 drop-shadow-md">
                     {album.name}
                   </h3>
-                  <p className="text-xs text-white/60 font-light">
+                  <p className="text-xs text-white/70 font-light">
                     {new Date(album.created_at).toLocaleDateString()}
                   </p>
                 </div>
 
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <Folder className="w-16 h-16 text-white/20 group-hover:scale-110 group-hover:text-white/40 transition-all duration-500" />
-                </div>
-
-                <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                {/* Mobile & Hover Action Menu */}
+                <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-100 translate-y-0 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all duration-300">
                   <button 
                     onClick={(e) => handleMenuClick(e, album, 'rename')}
-                    className="p-2 rounded-full bg-black/40 backdrop-blur-lg border border-white/10 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                    className="p-3 md:p-2 rounded-full bg-black/50 backdrop-blur-lg border border-white/10 text-white/90 hover:text-white hover:bg-white/20 transition-colors shadow-lg"
+                    title="Rename Album"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button 
                     onClick={(e) => handleMenuClick(e, album, 'delete')}
-                    className="p-2 rounded-full bg-black/40 backdrop-blur-lg border border-white/10 text-white/70 hover:text-red-400 hover:bg-red-500/20 hover:border-red-500/30 transition-colors"
+                    className="p-3 md:p-2 rounded-full bg-black/50 backdrop-blur-lg border border-white/10 text-white/90 hover:text-red-400 hover:bg-red-500/20 hover:border-red-500/30 transition-colors shadow-lg"
+                    title="Delete Album"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -232,7 +271,7 @@ export default function AlbumsPage() {
         )}
       </div>
 
-      {/* Modals */}
+      {/* Create / Rename Modals */}
       {(isCreateOpen || isRenameOpen) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-200">
           <div className="bg-transparent backdrop-blur-2xl border border-white/10 rounded-[32px] w-full max-w-md p-8 shadow-[0_25px_70px_rgba(0,0,0,0.65)] relative">
@@ -275,6 +314,7 @@ export default function AlbumsPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
       {isDeleteOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-200">
           <div className="bg-transparent backdrop-blur-2xl border border-white/10 rounded-[32px] w-full max-w-md p-8 shadow-[0_25px_70px_rgba(0,0,0,0.65)] relative">
