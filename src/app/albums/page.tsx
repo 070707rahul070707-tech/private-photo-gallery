@@ -36,12 +36,20 @@ export default function AlbumsPage() {
   // Helper to check if the secure link is a video
   const isVideo = (url: string | null | undefined) => {
     if (!url) return false;
-    // Look for video extensions in the URL before the query parameters
     return /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url);
   };
 
+  // RESTORED: Strict Authentication Check & Direct Link Guard
   useEffect(() => {
-    const fetchAlbums = async () => {
+    const checkAuthAndFetch = async () => {
+      // Instantly check if the user actually logged in through the frontend
+      const authStatus = localStorage.getItem("gallery-auth");
+      if (authStatus !== "true") {
+        window.location.href = "/";
+        return;
+      }
+
+      // If authorized, securely fetch the albums
       try {
         const secureAlbums = await getAlbumsSecure();
         setAlbums(secureAlbums);
@@ -51,7 +59,7 @@ export default function AlbumsPage() {
         setIsLoading(false);
       }
     };
-    fetchAlbums();
+    checkAuthAndFetch();
   }, []);
 
   const handleCreateAlbum = async (e: React.FormEvent) => {
@@ -101,7 +109,6 @@ export default function AlbumsPage() {
 
   const handleLogout = async () => {
     await logoutGallery();
-    // Also wipe the dummy frontend token just in case
     localStorage.removeItem("gallery-auth");
     window.location.href = "/";
   };
