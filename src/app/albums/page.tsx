@@ -4,9 +4,15 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { 
   Folder, Plus, Edit2, Trash2, 
-  X, Loader2, LogOut, Image as ImageIcon
+  X, Loader2, LogOut, Play
 } from "lucide-react";
-import { supabase } from "@/lib/supabase"; 
+import { 
+  getAlbumsSecure, 
+  createAlbumSecure, 
+  renameAlbumSecure, 
+  deleteAlbumSecure, 
+  logoutGallery 
+} from "../actions";
 
 interface Album {
   id: string;
@@ -27,68 +33,36 @@ export default function AlbumsPage() {
   const [newAlbumName, setNewAlbumName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Strict Authentication Check & Direct Link Guard
-  useEffect(() => {
-    const checkAuthAndFetch = async () => {
-      const authStatus = localStorage.getItem("gallery-auth");
-      if (authStatus !== "true") {
-        window.location.href = "/";
-        return;
-      }
-      await fetchAlbums();
-      setIsLoading(false);
-    };
-    checkAuthAndFetch();
-  }, [router]);
-
-  const fetchAlbums = async () => {
-    // 🚨 Explicitly demand the cover_url column from Supabase to bypass the cache!
-    const { data: albumsData, error } = await supabase
-      .from("albums")
-      .select("id, name, created_at, cover_url") 
-      .order("created_at", { ascending: false });
-
-    if (!error && albumsData) {
-      const albumsWithCovers = await Promise.all(
-        albumsData.map(async (album) => {
-          // 1. If you manually set a cover, USE IT IMMEDIATELY
-          if (album.cover_url && album.cover_url !== "") {
-            return album;
-          }
-          
-          // 2. If no custom cover exists, fallback to the 1st photo
-          const { data: mediaData } = await supabase
-            .from("photos")
-            .select("image_url")
-            .eq("album_id", album.id)
-            .order("created_at", { ascending: true })
-            .limit(1)
-            .single();
-
-          return {
-            ...album,
-            cover_url: mediaData?.image_url || null,
-          };
-        })
-      );
-
-      setAlbums(albumsWithCovers);
-    }
+  // Helper to check if the secure link is a video
+  const isVideo = (url: string | null | undefined) => {
+    if (!url) return false;
+    // Look for video extensions in the URL before the query parameters
+    return /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url);
   };
+
+  useEffect(() => {
+    const fetchAlbums = async () => {
+      try {
+        const secureAlbums = await getAlbumsSecure();
+        setAlbums(secureAlbums);
+      } catch (error) {
+        console.error("Failed to load albums securely");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchAlbums();
+  }, []);
 
   const handleCreateAlbum = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAlbumName.trim()) return;
     
     setIsSubmitting(true);
-    const { data, error } = await supabase
-      .from("albums")
-      .insert([{ name: newAlbumName.trim() }])
-      .select()
-      .single();
+    const { data, error } = await createAlbumSecure(newAlbumName.trim());
 
     if (!error && data) {
-      setAlbums([data, ...albums]);
+      setAlbums([{...data, cover_url: null}, ...albums]);
       setIsCreateOpen(false);
       setNewAlbumName("");
     }
@@ -100,12 +74,9 @@ export default function AlbumsPage() {
     if (!newAlbumName.trim() || !activeAlbum) return;
 
     setIsSubmitting(true);
-    const { error } = await supabase
-      .from("albums")
-      .update({ name: newAlbumName.trim() })
-      .eq("id", activeAlbum.id);
+    const { success } = await renameAlbumSecure(activeAlbum.id, newAlbumName.trim());
 
-    if (!error) {
+    if (success) {
       setAlbums(albums.map(a => a.id === activeAlbum.id ? { ...a, name: newAlbumName.trim() } : a));
       setIsRenameOpen(false);
       setActiveAlbum(null);
@@ -118,12 +89,9 @@ export default function AlbumsPage() {
     if (!activeAlbum) return;
     
     setIsSubmitting(true);
-    const { error } = await supabase
-      .from("albums")
-      .delete()
-      .eq("id", activeAlbum.id);
+    const { success } = await deleteAlbumSecure(activeAlbum.id);
 
-    if (!error) {
+    if (success) {
       setAlbums(albums.filter(a => a.id !== activeAlbum.id));
       setIsDeleteOpen(false);
       setActiveAlbum(null);
@@ -131,7 +99,9 @@ export default function AlbumsPage() {
     setIsSubmitting(false);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logoutGallery();
+    // Also wipe the dummy frontend token just in case
     localStorage.removeItem("gallery-auth");
     window.location.href = "/";
   };
@@ -158,32 +128,16 @@ export default function AlbumsPage() {
   return (
     <div className="w-full h-screen overflow-y-auto overflow-x-hidden text-white relative font-sans selection:bg-white/20 bg-[#050505]">
       
-      {/* Premium Twinkling Background */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="ambient-glow glow-blue"></div>
         <div className="ambient-glow glow-purple"></div>
-        
-        {/* Twinkling Stars */}
         <div className="twinkle-light t1"></div>
         <div className="twinkle-light t2"></div>
         <div className="twinkle-light t3"></div>
-        <div className="twinkle-light t4"></div>
-        <div className="twinkle-light t5"></div>
-        <div className="twinkle-light t6"></div>
-        <div className="twinkle-light t7"></div>
-        <div className="twinkle-light t8"></div>
-        <div className="twinkle-light t9"></div>
-        <div className="twinkle-light t10"></div>
-        <div className="twinkle-light t11"></div>
-        <div className="twinkle-light t12"></div>
-        <div className="twinkle-light t13"></div>
-        <div className="twinkle-light t14"></div>
-        <div className="twinkle-light t15"></div>
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-12 lg:px-8 min-h-screen pb-24">
         
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-12">
           <div>
             <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Albums</h1>
@@ -191,7 +145,6 @@ export default function AlbumsPage() {
           </div>
           
           <div className="flex items-center gap-3 sm:gap-4">
-            {/* Create Button */}
             <button 
               onClick={() => setIsCreateOpen(true)}
               className="group flex items-center gap-2 bg-transparent hover:bg-white/5 border border-white/10 backdrop-blur-md px-5 sm:px-6 py-3 rounded-full transition-all duration-300 shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
@@ -200,7 +153,6 @@ export default function AlbumsPage() {
               <span className="font-medium tracking-wide text-white text-sm sm:text-base">Create</span>
             </button>
             
-            {/* Logout Button */}
             <button 
               onClick={handleLogout}
               className="p-3 rounded-full bg-transparent hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 text-white hover:text-red-400 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
@@ -211,7 +163,6 @@ export default function AlbumsPage() {
           </div>
         </div>
 
-        {/* Grid */}
         {albums.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 border border-white/10 bg-transparent rounded-[32px] backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
             <Folder className="w-12 h-12 text-white/30 mb-4" />
@@ -219,54 +170,69 @@ export default function AlbumsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {albums.map((album) => (
-              <div 
-                key={album.id}
-                onClick={() => router.push(`/album?id=${album.id}`)}
-                className="group cursor-pointer relative aspect-square rounded-[32px] bg-black/40 border border-white/10 backdrop-blur-md overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:border-white/30 shadow-[0_4px_30px_rgba(0,0,0,0.1)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.6)]"
-              >
-                {/* Album Cover Photo OR Folder Icon Fallback */}
-                {album.cover_url ? (
-                  <img 
-                    src={album.cover_url} 
-                    alt={album.name} 
-                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" 
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <Folder className="w-16 h-16 text-white/20 group-hover:scale-110 group-hover:text-white/40 transition-all duration-500" />
+            {albums.map((album) => {
+              const videoCover = isVideo(album.cover_url);
+              
+              return (
+                <div 
+                  key={album.id}
+                  onClick={() => router.push(`/album?id=${album.id}`)}
+                  className="group cursor-pointer relative aspect-square rounded-[32px] bg-black/40 border border-white/10 backdrop-blur-md overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:border-white/30 shadow-[0_4px_30px_rgba(0,0,0,0.1)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.6)]"
+                >
+                  {album.cover_url ? (
+                    videoCover ? (
+                      <>
+                        <video 
+                          src={album.cover_url} 
+                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out pointer-events-none" 
+                          muted 
+                          playsInline
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                          <Play className="w-10 h-10 text-white/70 drop-shadow-lg" />
+                        </div>
+                      </>
+                    ) : (
+                      <img 
+                        src={album.cover_url} 
+                        alt={album.name} 
+                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" 
+                      />
+                    )
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <Folder className="w-16 h-16 text-white/20 group-hover:scale-110 group-hover:text-white/40 transition-all duration-500" />
+                    </div>
+                  )}
+
+                  <div className="absolute inset-0 p-6 flex flex-col justify-end z-10 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none">
+                    <h3 className="text-xl font-medium tracking-tight text-white mb-1 drop-shadow-md">
+                      {album.name}
+                    </h3>
+                    <p className="text-xs text-white/70 font-light">
+                      {new Date(album.created_at).toLocaleDateString()}
+                    </p>
                   </div>
-                )}
 
-                {/* Dark Gradient Overlay for Readability */}
-                <div className="absolute inset-0 p-6 flex flex-col justify-end z-10 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none">
-                  <h3 className="text-xl font-medium tracking-tight text-white mb-1 drop-shadow-md">
-                    {album.name}
-                  </h3>
-                  <p className="text-xs text-white/70 font-light">
-                    {new Date(album.created_at).toLocaleDateString()}
-                  </p>
+                  <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-100 translate-y-0 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all duration-300">
+                    <button 
+                      onClick={(e) => handleMenuClick(e, album, 'rename')}
+                      className="p-3 md:p-2 rounded-full bg-black/50 backdrop-blur-lg border border-white/10 text-white/90 hover:text-white hover:bg-white/20 transition-colors shadow-lg"
+                      title="Rename Album"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => handleMenuClick(e, album, 'delete')}
+                      className="p-3 md:p-2 rounded-full bg-black/50 backdrop-blur-lg border border-white/10 text-white/90 hover:text-red-400 hover:bg-red-500/20 hover:border-red-500/30 transition-colors shadow-lg"
+                      title="Delete Album"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-
-                {/* Mobile & Hover Action Menu */}
-                <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-100 translate-y-0 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all duration-300">
-                  <button 
-                    onClick={(e) => handleMenuClick(e, album, 'rename')}
-                    className="p-3 md:p-2 rounded-full bg-black/50 backdrop-blur-lg border border-white/10 text-white/90 hover:text-white hover:bg-white/20 transition-colors shadow-lg"
-                    title="Rename Album"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={(e) => handleMenuClick(e, album, 'delete')}
-                    className="p-3 md:p-2 rounded-full bg-black/50 backdrop-blur-lg border border-white/10 text-white/90 hover:text-red-400 hover:bg-red-500/20 hover:border-red-500/30 transition-colors shadow-lg"
-                    title="Delete Album"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
