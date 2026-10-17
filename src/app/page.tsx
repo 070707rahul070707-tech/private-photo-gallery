@@ -14,11 +14,14 @@ export default function Home() {
     setError("");
 
     try {
-      // 1. Wait for the server to finish verifying and attaching the cookie
+      // 1. The server securely verifies and attaches the unhackable cookie
       const result = await verifyPassword(password);
 
-      // 2. Only navigate AFTER we get the green light
       if (result && result.success) {
+        // THE FIX: We put the old dummy key back so your frontend stops kicking you out
+        localStorage.setItem("gallery-auth", "true");
+        
+        // Navigate to the gallery
         window.location.href = "/albums";
       } else {
         setError("Incorrect password");
