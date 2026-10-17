@@ -1,7 +1,6 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -32,12 +31,13 @@ export async function verifyPassword(password: string) {
     (await cookies()).set("gallery-auth-token", "authenticated", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax", // THE FIX: Allows the cookie to survive the redirect
+      sameSite: "lax", 
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
     
-    redirect("/albums");
+    // We only return success now. No server-side redirecting.
+    return { success: true };
   }
   
   return { success: false };

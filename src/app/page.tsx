@@ -13,12 +13,19 @@ export default function Home() {
     setIsLoading(true);
     setError("");
 
-    // The server will instantly redirect us if correct.
-    const result = await verifyPassword(password);
+    try {
+      // 1. Wait for the server to finish verifying and attaching the cookie
+      const result = await verifyPassword(password);
 
-    // If the code reaches this line, the server did NOT redirect us, meaning it was wrong.
-    if (result && !result.success) {
-      setError("Incorrect password");
+      // 2. Only navigate AFTER we get the green light
+      if (result && result.success) {
+        window.location.href = "/albums";
+      } else {
+        setError("Incorrect password");
+        setIsLoading(false);
+      }
+    } catch (err) {
+      setError("Connection error. Try again.");
       setIsLoading(false);
     }
   }
