@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { unstable_noStore as noStore } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -35,11 +36,8 @@ export async function verifyPassword(password: string) {
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
-    
-    // We only return success now. No server-side redirecting.
     return { success: true };
   }
-  
   return { success: false };
 }
 
@@ -50,6 +48,9 @@ export async function logoutGallery() {
 // --- SECURE GALLERY ACTIONS ---
 
 export async function getAlbumsSecure() {
+  // THE CACHE KILLER: Forces Next.js to fetch fresh database info every single time
+  noStore(); 
+  
   const { data: albumsData, error } = await supabase
     .from("albums")
     .select("id, name, created_at, cover_url")
@@ -70,7 +71,7 @@ export async function getAlbumsSecure() {
           .limit(1)
           .single();
         
-        imagePath = mediaData?.filename ? mediaData.filename : getFilePath(mediaData?.image_url);
+        imagePath = mediaData?.filename || getFilePath(mediaData?.image_url);
       }
 
       let signedUrl = null;
