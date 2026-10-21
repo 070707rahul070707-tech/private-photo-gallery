@@ -5,6 +5,7 @@ import {
   ArrowLeft, Upload, Trash2, X, ChevronLeft, 
   ChevronRight, Loader2, Image as ImageIcon, Play, ImagePlus, Move, ListOrdered, Save
 } from "lucide-react";
+import CardDeckCarousel from "@/components/ui/card-deck-carousel";
 import { 
   getAlbumMediaSecure, 
   uploadMediaSecure, 
@@ -38,7 +39,7 @@ export default function AlbumPage() {
   const isDragging = useRef(false);
 
   const isVideo = (filename: string) => {
-    return /\.(mp4|webm|ogg|mov|mkv)$/i.test(filename || "");
+    return /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(filename || "");
   };
 
   async function loadMedia() {
@@ -57,7 +58,6 @@ export default function AlbumPage() {
     const albumId = new URLSearchParams(window.location.search).get("id");
     if (!albumId) return;
 
-    // Use FormData to send files to the secure server action
     const formData = new FormData();
     Array.from(files).forEach(file => {
       formData.append("files", file);
@@ -343,12 +343,13 @@ export default function AlbumPage() {
         )}
       </div>
 
-      {/* Fullscreen Media Lightbox */}
+      {/* Interactive 3D Deck Lightbox */}
       {selectedIndex !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-2xl animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-3xl animate-in fade-in duration-200 overflow-hidden">
           
-          <div className="absolute top-6 right-6 flex items-center gap-4 z-50">
-            {!isVideo(media[selectedIndex].filename) && (
+          {/* Action Overlay Floating on Top */}
+          <div className="absolute top-6 right-6 flex items-center gap-4 z-50 pointer-events-auto">
+            {!isVideo(media[selectedIndex]?.filename) && (
               <button 
                 onClick={handleSetAsCover}
                 disabled={isSettingCover}
@@ -368,47 +369,21 @@ export default function AlbumPage() {
             </button>
             <button 
               onClick={() => setSelectedIndex(null)}
-              className="p-3 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white backdrop-blur-xl transition-all"
+              className="p-3 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white backdrop-blur-xl transition-all shadow-lg"
             >
-              <X className="w-5 h-5" />
+              <X className="w-6 h-6" />
             </button>
           </div>
 
-          <button
-            className="absolute left-6 p-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white backdrop-blur-xl transition-all z-50"
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedIndex(selectedIndex > 0 ? selectedIndex - 1 : media.length - 1);
-            }}
-          >
-            <ChevronLeft className="w-8 h-8" />
-          </button>
-
-          {isVideo(media[selectedIndex].filename) ? (
-            <video
-              src={media[selectedIndex].url}
-              controls
-              autoPlay
-              playsInline
-              className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-300"
-            />
-          ) : (
-            <img
-              src={media[selectedIndex].url}
-              alt="Fullscreen view"
-              className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl shadow-2xl animate-in zoom-in-95 duration-300"
-            />
-          )}
-
-          <button
-            className="absolute right-6 p-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white backdrop-blur-xl transition-all z-50"
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedIndex(selectedIndex < media.length - 1 ? selectedIndex + 1 : 0);
-            }}
-          >
-            <ChevronRight className="w-8 h-8" />
-          </button>
+          {/* The Stacked Card Deck Component */}
+          <CardDeckCarousel
+            slides={media.map(m => ({ image: m.url }))}
+            initialTop={selectedIndex}
+            onChange={(idx) => setSelectedIndex(idx)} 
+            height="100vh"
+            aspect="3 / 4"
+            scatter={7}
+          />
           
         </div>
       )}
