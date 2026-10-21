@@ -1,162 +1,124 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { 
-  ArrowLeft, Upload, Trash2, X, ChevronLeft, 
-  ChevronRight, Loader2, Image as ImageIcon, Play, ImagePlus, Move, ListOrdered, Save
+  Folder, Plus, Edit2, Trash2, 
+  X, Loader2, LogOut, Play
 } from "lucide-react";
-import CardDeckCarousel from "@/components/ui/card-deck-carousel";
+import { FluidParticlesBackground } from "@/components/ui/fluid-particles-background";
 import { 
-  getAlbumMediaSecure, 
-  uploadMediaSecure, 
-  deleteMediaSecure, 
-  setAlbumCoverSecure, 
-  saveMediaOrderSecure 
-} from "./actions";
+  getAlbumsSecure, 
+  createAlbumSecure, 
+  renameAlbumSecure, 
+  deleteAlbumSecure, 
+  logoutGallery 
+} from "../actions";
 
-interface MediaItem {
+interface Album {
   id: string;
-  album_id: string;
-  url: string;
-  filename: string;
+  name: string;
   created_at: string;
+  cover_url?: string | null;
 }
 
-export default function AlbumPage() {
-  const [files, setFiles] = useState<FileList | null>(null);
-  const [media, setMedia] = useState<MediaItem[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+export default function AlbumsPage() {
+  const router = useRouter();
+  const [albums, setAlbums] = useState<Album[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSettingCover, setIsSettingCover] = useState(false);
-  const [isSavingOrder, setIsSavingOrder] = useState(false);
-  
-  const [isReorderMode, setIsReorderMode] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const dragItem = useRef<number | null>(null);
-  const dragOverItem = useRef<number | null>(null);
-  const isDragging = useRef(false);
 
-  const isVideo = (filename: string) => {
-    return /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(filename || "");
-  };
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [activeAlbum, setActiveAlbum] = useState<Album | null>(null);
+  const [newAlbumName, setNewAlbumName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function loadMedia() {
-    const albumId = new URLSearchParams(window.location.search).get("id");
-    if (!albumId) return;
-
-    const secureMedia = await getAlbumMediaSecure(albumId);
-    setMedia(secureMedia);
-    setIsLoading(false);
-  }
-
-  async function uploadMedia() {
-    if (!files || files.length === 0) return;
-    setIsUploading(true);
-
-    const albumId = new URLSearchParams(window.location.search).get("id");
-    if (!albumId) return;
-
-    const formData = new FormData();
-    Array.from(files).forEach(file => {
-      formData.append("files", file);
-    });
-
-    await uploadMediaSecure(formData, albumId);
-
-    setFiles(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    await loadMedia();
-    setIsUploading(false);
-  }
-
-  async function deleteMedia() {
-    if (selectedIndex === null) return;
-    const item = media[selectedIndex];
-    if (!item || !item.filename) return;
-
-    setIsLoading(true);
-    setSelectedIndex(null);
-    
-    await deleteMediaSecure(item.filename);
-    await loadMedia();
-  }
-
-  async function handleSetAsCover() {
-    if (selectedIndex === null) return;
-    
-    const albumId = new URLSearchParams(window.location.search).get("id");
-    if (!albumId) return;
-
-    setIsSettingCover(true);
-    const item = media[selectedIndex];
-
-    const { success } = await setAlbumCoverSecure(albumId, item.filename);
-
-    setIsSettingCover(false);
-    if (success) {
-      alert("Album cover successfully updated!");
-    } else {
-      alert("Failed to update album cover.");
-    }
-  }
-
-  const handleDragStart = (index: number) => {
-    if (!isReorderMode) return;
-    isDragging.current = true;
-    dragItem.current = index;
-  };
-
-  const handleDragEnter = (index: number) => {
-    if (!isReorderMode) return;
-    dragOverItem.current = index;
-  };
-
-  const handleDragEnd = () => {
-    if (!isReorderMode) return;
-    if (dragItem.current === null || dragOverItem.current === null) {
-      setTimeout(() => { isDragging.current = false; }, 100);
-      return;
-    }
-
-    const newMedia = [...media];
-    const draggedItemContent = newMedia[dragItem.current];
-    newMedia.splice(dragItem.current, 1);
-    newMedia.splice(dragOverItem.current, 0, draggedItemContent);
-
-    dragItem.current = null;
-    dragOverItem.current = null;
-    
-    setMedia(newMedia);
-    setTimeout(() => { isDragging.current = false; }, 100);
-  };
-
-  const handleSaveOrder = async () => {
-    setIsSavingOrder(true);
-    const now = Date.now();
-    
-    const orderItems = media.map((item, index) => ({
-      id: item.id,
-      created_at: new Date(now + index * 1000).toISOString(),
-    }));
-
-    await saveMediaOrderSecure(orderItems);
-    
-    setIsSavingOrder(false);
-    setIsReorderMode(false);
-    await loadMedia(); 
-  };
-
-  const handleCancelReorder = async () => {
-    setIsReorderMode(false);
-    setIsLoading(true);
-    await loadMedia(); 
+  const isVideo = (url: string | null | undefined) => {
+    if (!url) return false;
+    return /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url);
   };
 
   useEffect(() => {
-    loadMedia();
+    const checkAuthAndFetch = async () => {
+      const authStatus = localStorage.getItem("gallery-auth");
+      if (authStatus !== "true") {
+        window.location.href = "/";
+        return;
+      }
+      try {
+        const secureAlbums = await getAlbumsSecure();
+        setAlbums(secureAlbums);
+      } catch (error) {
+        console.error("Failed to load albums securely");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    checkAuthAndFetch();
   }, []);
+
+  const handleCreateAlbum = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAlbumName.trim()) return;
+    
+    setIsSubmitting(true);
+    const { data, error } = await createAlbumSecure(newAlbumName.trim());
+
+    if (!error && data) {
+      setAlbums([{...data, cover_url: null}, ...albums]);
+      setIsCreateOpen(false);
+      setNewAlbumName("");
+    }
+    setIsSubmitting(false);
+  };
+
+  const handleRenameAlbum = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAlbumName.trim() || !activeAlbum) return;
+
+    setIsSubmitting(true);
+    const { success } = await renameAlbumSecure(activeAlbum.id, newAlbumName.trim());
+
+    if (success) {
+      setAlbums(albums.map(a => a.id === activeAlbum.id ? { ...a, name: newAlbumName.trim() } : a));
+      setIsRenameOpen(false);
+      setActiveAlbum(null);
+      setNewAlbumName("");
+    }
+    setIsSubmitting(false);
+  };
+
+  const handleDeleteAlbum = async () => {
+    if (!activeAlbum) return;
+    
+    setIsSubmitting(true);
+    const { success } = await deleteAlbumSecure(activeAlbum.id);
+
+    if (success) {
+      setAlbums(albums.filter(a => a.id !== activeAlbum.id));
+      setIsDeleteOpen(false);
+      setActiveAlbum(null);
+    }
+    setIsSubmitting(false);
+  };
+
+  const handleLogout = async () => {
+    await logoutGallery();
+    localStorage.removeItem("gallery-auth");
+    window.location.href = "/";
+  };
+
+  const handleMenuClick = (e: React.MouseEvent, album: Album, action: 'rename' | 'delete') => {
+    e.stopPropagation();
+    setActiveAlbum(album);
+    if (action === 'rename') {
+      setNewAlbumName(album.name);
+      setIsRenameOpen(true);
+    } else {
+      setIsDeleteOpen(true);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -167,175 +129,105 @@ export default function AlbumPage() {
   }
 
   return (
-    <div className="w-full h-screen overflow-y-auto overflow-x-hidden text-white relative font-sans selection:bg-white/20 bg-[#050505]">
+    <div className="w-full h-screen overflow-y-auto overflow-x-hidden text-white relative font-sans selection:bg-white/20">
       
-      {/* Premium Twinkling Background */}
-      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="ambient-glow glow-blue"></div>
-        <div className="ambient-glow glow-purple"></div>
-        
-        <div className="twinkle-light t1"></div>
-        <div className="twinkle-light t2"></div>
-        <div className="twinkle-light t3"></div>
-        <div className="twinkle-light t4"></div>
-        <div className="twinkle-light t5"></div>
-        <div className="twinkle-light t6"></div>
-        <div className="twinkle-light t7"></div>
-        <div className="twinkle-light t8"></div>
-        <div className="twinkle-light t9"></div>
-        <div className="twinkle-light t10"></div>
-        <div className="twinkle-light t11"></div>
-        <div className="twinkle-light t12"></div>
-        <div className="twinkle-light t13"></div>
-        <div className="twinkle-light t14"></div>
-        <div className="twinkle-light t15"></div>
-      </div>
+      {/* New Fluid Particles Background */}
+      <FluidParticlesBackground />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-12 lg:px-8 min-h-screen pb-24">
         
-        {/* Header Area */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-12">
           <div>
-            <button
-              onClick={() => { window.location.href = "/albums"; }}
-              className={`flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-4 group w-fit ${isReorderMode ? 'opacity-50 pointer-events-none' : ''}`}
-            >
-              <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
-              Back to Albums
-            </button>
-            <h1 className="text-4xl font-bold tracking-tight text-white flex items-center gap-3">
-              <ImageIcon className="w-8 h-8 text-white/30" />
-              {isReorderMode ? "Rearrange Photos" : "Album Media"}
-              {isSavingOrder && <Loader2 className="w-5 h-5 text-white/40 animate-spin ml-2" />}
-            </h1>
+            <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Albums</h1>
+            <p className="text-[#9ca3af] font-light tracking-wide">Organize your private memories.</p>
           </div>
-
-          <div className="flex items-center gap-3 bg-transparent p-2 rounded-[24px] border border-white/10 backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+          
+          <div className="flex items-center gap-3 sm:gap-4">
+            <button 
+              onClick={() => setIsCreateOpen(true)}
+              className="group flex items-center gap-2 bg-transparent hover:bg-white/5 border border-white/10 backdrop-blur-md px-5 sm:px-6 py-3 rounded-full transition-all duration-300 shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
+            >
+              <Plus className="w-5 h-5 transition-transform group-hover:rotate-90 duration-300 text-white" />
+              <span className="font-medium tracking-wide text-white text-sm sm:text-base">Create</span>
+            </button>
             
-            {isReorderMode ? (
-              <>
-                <button
-                  onClick={handleCancelReorder}
-                  className="px-6 py-3 rounded-2xl font-medium text-white/70 hover:text-white hover:bg-white/5 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveOrder}
-                  disabled={isSavingOrder}
-                  className="group flex items-center gap-2 bg-green-500 text-white px-6 py-3 rounded-2xl font-bold hover:bg-green-600 hover:-translate-y-[2px] disabled:opacity-50 transition-all shadow-lg shadow-green-500/20"
-                >
-                  {isSavingOrder ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                  Save Order
-                </button>
-              </>
-            ) : (
-              <>
-                {media.length > 1 && (
-                  <>
-                    <button
-                      onClick={() => setIsReorderMode(true)}
-                      className="p-3 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition-all group"
-                      title="Rearrange Photos"
-                    >
-                      <ListOrdered className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                    </button>
-                    <div className="w-px h-8 bg-white/10 mx-1"></div>
-                  </>
-                )}
-
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*,video/*"
-                  ref={fileInputRef}
-                  onChange={(e) => setFiles(e.target.files)}
-                  className="hidden"
-                  id="file-upload"
-                />
-                <label 
-                  htmlFor="file-upload"
-                  className="px-6 py-3 rounded-2xl font-medium text-white/70 hover:text-white hover:bg-white/5 transition-all cursor-pointer border border-transparent hover:border-white/10"
-                >
-                  {files && files.length > 0 ? `${files.length} selected` : "Select Media"}
-                </label>
-                <button
-                  onClick={uploadMedia}
-                  disabled={isUploading || !files || files.length === 0}
-                  className="group flex items-center gap-2 bg-white text-black px-6 py-3 rounded-2xl font-bold hover:bg-[#e5e5e5] hover:-translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all"
-                >
-                  {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                  Upload
-                </button>
-              </>
-            )}
+            <button 
+              onClick={handleLogout}
+              className="p-3 rounded-full bg-transparent hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 text-white hover:text-red-400 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
+              title="Lock Gallery"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
-        {/* Media Grid */}
-        {media.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 border border-white/10 bg-transparent rounded-[32px] backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
-            <ImageIcon className="w-12 h-12 text-white/30 mb-4" />
-            <p className="text-white/60 font-light">No media in this album yet.</p>
+        {albums.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 border border-white/10 bg-black/40 rounded-[32px] backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+            <Folder className="w-12 h-12 text-white/30 mb-4" />
+            <p className="text-[#9ca3af] font-light">No albums yet. Create one to get started.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {media.map((item, index) => {
-              const video = isVideo(item.filename);
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {albums.map((album) => {
+              const videoCover = isVideo(album.cover_url);
+              
               return (
                 <div 
-                  key={item.id}
-                  draggable={isReorderMode}
-                  onDragStart={() => handleDragStart(index)}
-                  onDragEnter={() => handleDragEnter(index)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={(e) => e.preventDefault()}
-                  onClick={() => {
-                    if (isReorderMode) return;
-                    if (isDragging.current) return;
-                    setSelectedIndex(index);
-                  }}
-                  className={`group relative aspect-square rounded-[24px] overflow-hidden bg-black/40 border backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.1)] transition-all duration-500 flex items-center justify-center ${
-                    isReorderMode 
-                      ? "cursor-grab active:cursor-grabbing border-blue-500/40 hover:border-blue-400 scale-95 hover:scale-100" 
-                      : "cursor-pointer border-white/10 hover:border-white/30"
-                  }`}
+                  key={album.id}
+                  onClick={() => router.push(`/album?id=${album.id}`)}
+                  className="group cursor-pointer relative aspect-square rounded-[32px] bg-black/60 border border-white/10 backdrop-blur-md overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:border-white/30 shadow-[0_4px_30px_rgba(0,0,0,0.1)] hover:shadow-[0_15px_40px_rgba(0,0,0,0.6)]"
                 >
-                  {video ? (
-                    <>
-                      <video 
-                        src={item.url} 
-                        className={`w-full h-full object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-110'}`} 
-                        muted 
-                        playsInline
+                  {album.cover_url ? (
+                    videoCover ? (
+                      <>
+                        <video 
+                          src={album.cover_url} 
+                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out pointer-events-none" 
+                          muted 
+                          playsInline
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                          <Play className="w-10 h-10 text-white/70 drop-shadow-lg" />
+                        </div>
+                      </>
+                    ) : (
+                      <img 
+                        src={album.cover_url} 
+                        alt={album.name} 
+                        className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" 
                       />
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white/90">
-                          <Play className="w-8 h-8 fill-white/80" />
-                        </div>
-                      </div>
-                    </>
+                    )
                   ) : (
-                    <img
-                      src={item.url}
-                      alt={`Media ${index}`}
-                      className={`w-full h-full object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-110'}`}
-                    />
-                  )}
-                  
-                  {isReorderMode ? (
-                    <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center pointer-events-none border-2 border-transparent group-active:border-blue-500/50 rounded-[24px]">
-                      <Move className="w-8 h-8 text-white drop-shadow-md" />
-                    </div>
-                  ) : (
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-300 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
-                      <div className="transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
-                        <div className="p-3 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white">
-                          {video ? <Play className="w-6 h-6 fill-white" /> : <ImageIcon className="w-6 h-6" />}
-                        </div>
-                      </div>
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <Folder className="w-16 h-16 text-white/20 group-hover:scale-110 group-hover:text-white/40 transition-all duration-500" />
                     </div>
                   )}
+
+                  <div className="absolute inset-0 p-6 flex flex-col justify-end z-10 bg-gradient-to-t from-black/90 via-black/30 to-transparent pointer-events-none">
+                    <h3 className="text-xl font-medium tracking-tight text-white mb-1 drop-shadow-md">
+                      {album.name}
+                    </h3>
+                    <p className="text-xs text-white/70 font-light">
+                      {new Date(album.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-100 translate-y-0 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all duration-300">
+                    <button 
+                      onClick={(e) => handleMenuClick(e, album, 'rename')}
+                      className="p-3 md:p-2 rounded-full bg-black/50 backdrop-blur-lg border border-white/10 text-white/90 hover:text-white hover:bg-white/20 transition-colors shadow-lg"
+                      title="Rename Album"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => handleMenuClick(e, album, 'delete')}
+                      className="p-3 md:p-2 rounded-full bg-black/50 backdrop-blur-lg border border-white/10 text-white/90 hover:text-red-400 hover:bg-red-500/20 hover:border-red-500/30 transition-colors shadow-lg"
+                      title="Delete Album"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -343,50 +235,76 @@ export default function AlbumPage() {
         )}
       </div>
 
-      {/* Interactive 3D Deck Lightbox */}
-      {selectedIndex !== null && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-3xl animate-in fade-in duration-200 overflow-hidden">
-          
-          {/* Action Overlay Floating on Top */}
-          <div className="absolute top-6 right-6 flex items-center gap-4 z-50 pointer-events-auto">
-            {!isVideo(media[selectedIndex]?.filename) && (
-              <button 
-                onClick={handleSetAsCover}
-                disabled={isSettingCover}
-                className="p-3 rounded-full bg-black/40 border border-white/10 text-white/70 hover:text-blue-400 hover:border-blue-500/50 hover:bg-blue-500/10 backdrop-blur-xl transition-all group disabled:opacity-50"
-                title="Set as Album Cover"
-              >
-                {isSettingCover ? <Loader2 className="w-5 h-5 animate-spin" /> : <ImagePlus className="w-5 h-5" />}
-              </button>
-            )}
-
+      {/* Create / Rename Modals */}
+      {(isCreateOpen || isRenameOpen) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-200">
+          <div className="bg-black/60 backdrop-blur-2xl border border-white/10 rounded-[32px] w-full max-w-md p-8 shadow-[0_25px_70px_rgba(0,0,0,0.65)] relative">
             <button 
-              onClick={deleteMedia}
-              className="p-3 rounded-full bg-black/40 border border-white/10 text-white/70 hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 backdrop-blur-xl transition-all group"
-              title="Delete Media"
+              onClick={() => { setIsCreateOpen(false); setIsRenameOpen(false); }}
+              className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors"
             >
-              <Trash2 className="w-5 h-5" />
+              <X className="w-5 h-5" />
             </button>
-            <button 
-              onClick={() => setSelectedIndex(null)}
-              className="p-3 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white backdrop-blur-xl transition-all shadow-lg"
-            >
-              <X className="w-6 h-6" />
-            </button>
+            <h2 className="text-2xl font-bold tracking-tight mb-6 text-white">
+              {isCreateOpen ? "Create Album" : "Rename Album"}
+            </h2>
+            <form onSubmit={isCreateOpen ? handleCreateAlbum : handleRenameAlbum}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Album name..."
+                value={newAlbumName}
+                onChange={(e) => setNewAlbumName(e.target.value)}
+                className="w-full h-[58px] bg-black/40 border border-white/10 rounded-2xl px-4 text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:bg-black/60 transition-all mb-6"
+              />
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setIsCreateOpen(false); setIsRenameOpen(false); }}
+                  className="px-5 py-3 rounded-2xl font-medium text-white/60 hover:text-white hover:bg-white/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !newAlbumName.trim()}
+                  className="px-6 py-3 bg-white text-black rounded-2xl font-bold hover:bg-[#e5e5e5] hover:-translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center min-w-[100px]"
+                >
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Save"}
+                </button>
+              </div>
+            </form>
           </div>
-
-          {/* The Stacked Card Deck Component */}
-          <CardDeckCarousel
-            slides={media.map(m => ({ image: m.url }))}
-            initialTop={selectedIndex}
-            onChange={(idx) => setSelectedIndex(idx)} 
-            height="100vh"
-            aspect="3 / 4"
-            scatter={7}
-          />
-          
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-200">
+          <div className="bg-black/60 backdrop-blur-2xl border border-white/10 rounded-[32px] w-full max-w-md p-8 shadow-[0_25px_70px_rgba(0,0,0,0.65)] relative">
+            <h2 className="text-2xl font-bold tracking-tight mb-2 text-red-400">Delete Album</h2>
+            <p className="text-white/70 font-light mb-8">
+              Are you sure you want to delete <span className="text-white font-medium">"{activeAlbum?.name}"</span>? All photos inside will be lost.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setIsDeleteOpen(false)}
+                className="px-5 py-3 rounded-2xl font-medium text-white/60 hover:text-white hover:bg-white/10 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAlbum}
+                disabled={isSubmitting}
+                className="px-6 py-3 bg-red-500/10 text-red-400 border border-red-500/30 rounded-2xl font-bold hover:bg-red-500 hover:text-white disabled:opacity-50 transition-all flex items-center justify-center"
+              >
+                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
