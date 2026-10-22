@@ -27,7 +27,6 @@ export default function AlbumsPage() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // New State: Tracks which album is facing forward in the 3D Carousel
   const [centeredAlbum, setCenteredAlbum] = useState<Album | null>(null);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -83,7 +82,6 @@ export default function AlbumsPage() {
       setIsRenameOpen(false);
       setActiveAlbum(null);
       setNewAlbumName("");
-      // Update the centered title instantly as well
       if (centeredAlbum?.id === activeAlbum.id) {
         setCenteredAlbum({ ...centeredAlbum, name: newAlbumName.trim() });
       }
@@ -111,7 +109,6 @@ export default function AlbumsPage() {
     window.location.href = "/";
   };
 
-  // Triggers the Modals
   const handleMenuClick = (album: Album, action: 'rename' | 'delete') => {
     setActiveAlbum(album);
     if (action === 'rename') {
@@ -122,7 +119,6 @@ export default function AlbumsPage() {
     }
   };
 
-  // Teleports into the Album
   const handleAlbumClick = (id: string) => {
     router.push(`/album?id=${id}`);
   };
@@ -142,16 +138,13 @@ export default function AlbumsPage() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-12 lg:px-8 min-h-screen pb-24 flex flex-col">
         
-        {/* Top Navigation & Action Icons */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8">
           <div>
             <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Albums</h1>
             <p className="text-[#9ca3af] font-light tracking-wide">Organize your private memories.</p>
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4 flex-wrap z-50">
-            
-            {/* THE FIX: Dynamic Edit/Delete buttons that target the middle card */}
             {centeredAlbum && albums.length > 0 && (
               <div className="flex items-center gap-2 mr-2">
                 <button 
@@ -174,7 +167,7 @@ export default function AlbumsPage() {
 
             <button 
               onClick={() => setIsCreateOpen(true)}
-              className="group flex items-center gap-2 bg-transparent hover:bg-white/5 border border-white/10 backdrop-blur-md px-5 sm:px-6 py-3 rounded-full transition-all duration-300 shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
+              className="group flex items-center gap-2 bg-transparent hover:bg-white/5 border border-white/10 backdrop-blur-md px-5 sm:px-6 py-3 rounded-full transition-all duration-300 shadow-[0_4px_30px_rgba(0,0,0,0.1)] z-50"
             >
               <Plus className="w-5 h-5 transition-transform group-hover:rotate-90 duration-300 text-white" />
               <span className="font-medium tracking-wide text-white text-sm sm:text-base">Create</span>
@@ -182,7 +175,7 @@ export default function AlbumsPage() {
             
             <button 
               onClick={handleLogout}
-              className="p-3 rounded-full bg-transparent hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 text-white hover:text-red-400 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
+              className="p-3 rounded-full bg-transparent hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 text-white hover:text-red-400 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)] z-50"
               title="Lock Gallery"
             >
               <LogOut className="w-5 h-5" />
@@ -190,8 +183,7 @@ export default function AlbumsPage() {
           </div>
         </div>
 
-        {/* 3D Carousel */}
-        <div className="flex-1 flex flex-col justify-center -mt-8">
+        <div className="flex-1 flex flex-col justify-center">
           {albums.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 border border-white/10 bg-black/40 rounded-[32px] backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
               <p className="text-[#9ca3af] font-light">No albums yet. Create one to get started.</p>
@@ -206,7 +198,6 @@ export default function AlbumsPage() {
         </div>
       </div>
 
-      {/* Modals remain exactly the same below */}
       {(isCreateOpen || isRenameOpen) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-200">
           <div className="bg-black/60 backdrop-blur-2xl border border-white/10 rounded-[32px] w-full max-w-md p-8 shadow-[0_25px_70px_rgba(0,0,0,0.65)] relative">
@@ -217,14 +208,7 @@ export default function AlbumsPage() {
               {isCreateOpen ? "Create Album" : "Rename Album"}
             </h2>
             <form onSubmit={isCreateOpen ? handleCreateAlbum : handleRenameAlbum}>
-              <input
-                type="text"
-                autoFocus
-                placeholder="Album name..."
-                value={newAlbumName}
-                onChange={(e) => setNewAlbumName(e.target.value)}
-                className="w-full h-[58px] bg-black/40 border border-white/10 rounded-2xl px-4 text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:bg-black/60 transition-all mb-6"
-              />
+              <input type="text" autoFocus placeholder="Album name..." value={newAlbumName} onChange={(e) => setNewAlbumName(e.target.value)} className="w-full h-[58px] bg-black/40 border border-white/10 rounded-2xl px-4 text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:bg-black/60 transition-all mb-6" />
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => { setIsCreateOpen(false); setIsRenameOpen(false); }} className="px-5 py-3 rounded-2xl font-medium text-white/60 hover:text-white hover:bg-white/10 transition-all">Cancel</button>
                 <button type="submit" disabled={isSubmitting || !newAlbumName.trim()} className="px-6 py-3 bg-white text-black rounded-2xl font-bold hover:bg-[#e5e5e5] hover:-translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center min-w-[100px]">
@@ -252,7 +236,6 @@ export default function AlbumsPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
