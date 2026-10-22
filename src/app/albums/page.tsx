@@ -2,17 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  Plus, Edit2, Trash2, X, Loader2, LogOut
-} from "lucide-react";
+import { Plus, Edit2, Trash2, X, Loader2, LogOut } from "lucide-react";
 import { FluidParticlesBackground } from "@/components/ui/fluid-particles-background";
 import { ThreeDAlbumCarousel } from "@/components/ui/3d-carousel";
 import { 
-  getAlbumsSecure, 
-  createAlbumSecure, 
-  renameAlbumSecure, 
-  deleteAlbumSecure, 
-  logoutGallery 
+  getAlbumsSecure, createAlbumSecure, renameAlbumSecure, 
+  deleteAlbumSecure, logoutGallery 
 } from "../actions";
 
 interface Album {
@@ -27,6 +22,7 @@ export default function AlbumsPage() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // This tracks which album is currently in the center of the 3D cylinder
   const [centeredAlbum, setCenteredAlbum] = useState<Album | null>(null);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -58,10 +54,8 @@ export default function AlbumsPage() {
   const handleCreateAlbum = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAlbumName.trim()) return;
-    
     setIsSubmitting(true);
     const { data, error } = await createAlbumSecure(newAlbumName.trim());
-
     if (!error && data) {
       setAlbums([{...data, cover_url: null}, ...albums]);
       setIsCreateOpen(false);
@@ -73,15 +67,14 @@ export default function AlbumsPage() {
   const handleRenameAlbum = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAlbumName.trim() || !activeAlbum) return;
-
     setIsSubmitting(true);
     const { success } = await renameAlbumSecure(activeAlbum.id, newAlbumName.trim());
-
     if (success) {
       setAlbums(albums.map(a => a.id === activeAlbum.id ? { ...a, name: newAlbumName.trim() } : a));
       setIsRenameOpen(false);
       setActiveAlbum(null);
       setNewAlbumName("");
+      // Updates the center title instantly
       if (centeredAlbum?.id === activeAlbum.id) {
         setCenteredAlbum({ ...centeredAlbum, name: newAlbumName.trim() });
       }
@@ -91,10 +84,8 @@ export default function AlbumsPage() {
 
   const handleDeleteAlbum = async () => {
     if (!activeAlbum) return;
-    
     setIsSubmitting(true);
     const { success } = await deleteAlbumSecure(activeAlbum.id);
-
     if (success) {
       setAlbums(albums.filter(a => a.id !== activeAlbum.id));
       setIsDeleteOpen(false);
@@ -133,11 +124,9 @@ export default function AlbumsPage() {
 
   return (
     <div className="w-full h-screen overflow-y-auto overflow-x-hidden text-white relative font-sans selection:bg-white/20">
-      
       <FluidParticlesBackground />
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-12 lg:px-8 min-h-screen pb-24 flex flex-col">
-        
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8">
           <div>
             <h1 className="text-4xl font-bold tracking-tight text-white mb-2">Albums</h1>
@@ -145,39 +134,24 @@ export default function AlbumsPage() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4 flex-wrap z-50">
+            {/* The Edit and Delete icons are securely placed here next to Create! */}
             {centeredAlbum && albums.length > 0 && (
               <div className="flex items-center gap-2 mr-2">
-                <button 
-                  onClick={() => handleMenuClick(centeredAlbum, 'rename')}
-                  className="p-3 rounded-full bg-black/60 border border-white/10 text-white hover:bg-white/20 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
-                  title="Rename Focused Album"
-                >
+                <button onClick={() => handleMenuClick(centeredAlbum, 'rename')} className="p-3 rounded-full bg-black/60 border border-white/10 text-white hover:bg-white/20 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)]" title="Rename Centered Album">
                   <Edit2 className="w-5 h-5" />
                 </button>
-                <button 
-                  onClick={() => handleMenuClick(centeredAlbum, 'delete')}
-                  className="p-3 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-red-500/20 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)]"
-                  title="Delete Focused Album"
-                >
+                <button onClick={() => handleMenuClick(centeredAlbum, 'delete')} className="p-3 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-red-500/20 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)]" title="Delete Centered Album">
                   <Trash2 className="w-5 h-5" />
                 </button>
                 <div className="w-px h-8 bg-white/10 mx-1 sm:mx-2 hidden sm:block"></div>
               </div>
             )}
 
-            <button 
-              onClick={() => setIsCreateOpen(true)}
-              className="group flex items-center gap-2 bg-transparent hover:bg-white/5 border border-white/10 backdrop-blur-md px-5 sm:px-6 py-3 rounded-full transition-all duration-300 shadow-[0_4px_30px_rgba(0,0,0,0.1)] z-50"
-            >
+            <button onClick={() => setIsCreateOpen(true)} className="group flex items-center gap-2 bg-transparent hover:bg-white/5 border border-white/10 backdrop-blur-md px-5 sm:px-6 py-3 rounded-full transition-all duration-300 shadow-[0_4px_30px_rgba(0,0,0,0.1)] z-50">
               <Plus className="w-5 h-5 transition-transform group-hover:rotate-90 duration-300 text-white" />
               <span className="font-medium tracking-wide text-white text-sm sm:text-base">Create</span>
             </button>
-            
-            <button 
-              onClick={handleLogout}
-              className="p-3 rounded-full bg-transparent hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 text-white hover:text-red-400 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)] z-50"
-              title="Lock Gallery"
-            >
+            <button onClick={handleLogout} className="p-3 rounded-full bg-transparent hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 text-white hover:text-red-400 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)] z-50" title="Lock Gallery">
               <LogOut className="w-5 h-5" />
             </button>
           </div>
@@ -189,11 +163,7 @@ export default function AlbumsPage() {
               <p className="text-[#9ca3af] font-light">No albums yet. Create one to get started.</p>
             </div>
           ) : (
-            <ThreeDAlbumCarousel 
-              albums={albums} 
-              onAlbumClick={handleAlbumClick} 
-              onActiveChange={setCenteredAlbum} 
-            />
+            <ThreeDAlbumCarousel albums={albums} onAlbumClick={handleAlbumClick} onActiveChange={setCenteredAlbum} />
           )}
         </div>
       </div>
@@ -204,9 +174,7 @@ export default function AlbumsPage() {
             <button onClick={() => { setIsCreateOpen(false); setIsRenameOpen(false); }} className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors">
               <X className="w-5 h-5" />
             </button>
-            <h2 className="text-2xl font-bold tracking-tight mb-6 text-white">
-              {isCreateOpen ? "Create Album" : "Rename Album"}
-            </h2>
+            <h2 className="text-2xl font-bold tracking-tight mb-6 text-white">{isCreateOpen ? "Create Album" : "Rename Album"}</h2>
             <form onSubmit={isCreateOpen ? handleCreateAlbum : handleRenameAlbum}>
               <input type="text" autoFocus placeholder="Album name..." value={newAlbumName} onChange={(e) => setNewAlbumName(e.target.value)} className="w-full h-[58px] bg-black/40 border border-white/10 rounded-2xl px-4 text-white placeholder:text-white/40 focus:outline-none focus:border-white/40 focus:bg-black/60 transition-all mb-6" />
               <div className="flex justify-end gap-3">

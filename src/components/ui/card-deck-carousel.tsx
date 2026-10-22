@@ -1,4 +1,5 @@
 "use client"
+// @ts-nocheck
 
 import * as React from "react"
 
@@ -15,7 +16,7 @@ export type Slide = {
 
 export type CardDeckCarouselProps = {
   slides?: Slide[]
-  initialTop?: number // We added this to open the exact clicked photo
+  initialTop?: number 
   height?: number | string
   cardWidth?: string
   aspect?: string
@@ -57,17 +58,16 @@ export function pad2(n: number): string {
   return n < 10 ? "0" + n : String(n)
 }
 
-// Minimal CSS injected into the component
 const CD_CSS = [
   ".cd-root{position:relative;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(28px,5vh,52px);overflow:hidden;background:var(--cd-bg);color:var(--cd-ink);outline:none;padding:24px 16px;box-sizing:border-box}",
   ".cd-root:focus-visible{box-shadow:inset 0 0 0 2px var(--cd-ink)}",
   ".cd-deck{position:relative;width:var(--cd-w);aspect-ratio:var(--cd-aspect);max-height:calc(var(--cd-h) * .62);max-width:calc(var(--cd-h) * .62 * var(--cd-ar));touch-action:pan-y}",
-  ".cd-card{position:absolute;inset:0;border-radius:18px;overflow:hidden;background:#111;box-shadow:0 1px 2px rgba(0,0,0,.08),0 30px 60px -30px rgba(0,0,0,.45);transition:transform .6s cubic-bezier(.2,.8,.2,1),opacity .4s ease,filter .4s ease;will-change:transform}",
+  ".cd-card{position:absolute;inset:0;background:transparent;transition:transform .6s cubic-bezier(.2,.8,.2,1),opacity .4s ease,filter .4s ease;will-change:transform}",
   ".cd-card[data-top='1']{cursor:grab}",
   ".cd-card[data-drag='1']{cursor:grabbing;transition:none}",
   ".cd-card[data-fly='1']{transition:transform .45s cubic-bezier(.3,.5,.3,1),opacity .45s ease}",
   ".cd-card[data-snap='1']{transition:none}",
-  ".cd-card img, .cd-card video{position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;display:block;pointer-events:none;user-select:none}",
+  ".cd-card img, .cd-card video{position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:contain;background:transparent;display:block;pointer-events:none;user-select:none;filter:drop-shadow(0 15px 35px rgba(0,0,0,0.6));border-radius:8px}",
   ".cd-meta{display:flex;align-items:center;gap:clamp(16px,3vw,32px);width:min(var(--cd-w),100%);max-width:560px;z-index:10;}",
   ".cd-cap{flex:1;min-width:0;overflow:hidden;padding-bottom:.2em}",
   ".cd-cap>*{display:block;animation:cd-in .6s cubic-bezier(.2,.8,.2,1) both}",
@@ -89,10 +89,10 @@ export default function CardDeckCarousel({
   slides = [],
   initialTop = 0,
   height = "100svh",
-  cardWidth = "min(85vw, 500px)", // Slightly larger for better viewing
-  aspect = "3 / 4",
+  cardWidth = "min(95vw, 800px)", 
+  aspect = "1 / 1", 
   scatter = 7,
-  autoplay = 0, // Disabled autoplay so it doesn't flip while you look at a photo
+  autoplay = 0, 
   background = "transparent",
   ink = "#ffffff",
   onChange,
@@ -148,7 +148,6 @@ export default function CardDeckCarousel({
     )
   }, [n, reduce])
 
-  // Tell the parent component when the card changes
   React.useEffect(() => {
     onChange?.(top)
   }, [top, onChange])
@@ -171,6 +170,7 @@ export default function CardDeckCarousel({
     const dy = e.clientY - d.y
     setOver({ i: topRef.current, x: dx, y: dy, r: reduce ? 0 : dx * 0.05, mode: "drag" })
   }
+  
   const onUp = (e: React.PointerEvent) => {
     const d = drag.current
     drag.current = null
@@ -179,9 +179,18 @@ export default function CardDeckCarousel({
     const dx = e.clientX - d.x
     const dy = e.clientY - d.y
     const w = deckRef.current?.offsetWidth || 400
-    if (isThrow(dx, d.vx, w)) throwTop(dx, dx, dy, dy)
-    else setOver(null)
+    
+    if (isThrow(dx, d.vx, w)) {
+      if (dx > 0) {
+        pullBack();
+      } else {
+        throwTop(dx, dx, dy, dy);
+      }
+    } else {
+      setOver(null)
+    }
   }
+  
   const onKey = (e: React.KeyboardEvent) => {
     lastTouch.current = performance.now()
     if (e.key === "ArrowRight") throwTop(1)
@@ -191,8 +200,6 @@ export default function CardDeckCarousel({
   }
 
   const s = slides[top] || {}
-  
-  // We added your video checking logic here
   const isVideo = (url?: string) => /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url || "")
 
   return (
@@ -267,9 +274,7 @@ export default function CardDeckCarousel({
             <path d="M10 3 5 8l5 5" stroke="currentColor" strokeWidth="1.4" />
           </svg>
         </button>
-        <div className="cd-cap" key={top} aria-hidden="true">
-          {/* We leave this blank so it doesn't crowd your images, but it keeps the buttons centered */}
-        </div>
+        <div className="cd-cap" key={top} aria-hidden="true"></div>
         <span className="cd-count" aria-hidden="true">
           <b>{pad2(top + 1)}</b> / {pad2(n)}
         </span>

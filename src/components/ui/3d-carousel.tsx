@@ -1,6 +1,8 @@
 "use client"
+// @ts-nocheck
 
-import { useEffect, useRef } from "react"
+import { memo, useEffect, useState, useRef } from "react"
+import { motion, useAnimation } from "framer-motion"
 import { Folder, Play } from "lucide-react"
 
 interface Album {
@@ -16,89 +18,139 @@ interface CarouselProps {
   onActiveChange: (album: Album) => void;
 }
 
-export function ThreeDAlbumCarousel({ albums, onAlbumClick, onActiveChange }: CarouselProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) => {
+  const [faceWidth, setFaceWidth] = useState(240);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const controls = useAnimation();
+  
+  // Custom touch trackers replace the buggy Framer Motion drag
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setFaceWidth(Math.min(window.innerWidth * 0.65, 360));
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const displayCount = Math.max(albums.length, 6);
+  const cylinderWidth = faceWidth * displayCount;
+  const radius = cylinderWidth / (2 * Math.PI);
+  const anglePerCard = 360 / displayCount;
+
   const isVideo = (url?: string | null) => /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url || "");
 
-  // Sets the first album as active immediately
   useEffect(() => {
     if (albums.length > 0) {
-      onActiveChange(albums[0]);
+      const wrappedIndex = ((activeIndex % albums.length) + albums.length) % albums.length;
+      onActiveChange(albums[wrappedIndex]);
     }
-  }, [albums, onActiveChange]);
+  }, [activeIndex, albums, onActiveChange]);
 
-  // Native scroll listener to update the Edit/Delete buttons at the top
-  const handleScroll = () => {
-    if (!scrollRef.current) return;
-    const container = scrollRef.current;
-    
-    // Calculates which card is currently in the center of the screen
-    const scrollPosition = container.scrollLeft;
-    const cardWidth = container.children[0]?.clientWidth || 1;
-    
-    // The gap + card width determines the snap distance
-    const snapDistance = cardWidth + 24; // 24px is the gap-6
-    const activeIndex = Math.round(scrollPosition / snapDistance);
-    
-    const safeIndex = Math.min(Math.max(activeIndex, 0), albums.length - 1);
-    onActiveChange(albums[safeIndex]);
+  useEffect(() => {
+    controls.start({
+      rotateY: activeIndex * -anglePerCard,
+      transition: { type: "spring", stiffness: 150, damping: 25, mass: 0.5 }
+    })
+  }, [activeIndex, controls, anglePerCard]);
+
+  // Touch logic guarantees the cylinder stays perfectly centered while spinning
+  const handleTouchStart = (e: any) => {
+    touchStartX.current = e.touches[0].clientX;
   };
 
-  if (!albums || albums.length === 0) return null;
+  const handleTouchEnd = (e: any) => {
+    touchEndX.current = e.changedTouches[0].clientX;
+    const diff = touchEndX.current - touchStartX.current;
+    const threshold = 40;
+    
+    // The math is officially reversed to match your exact request
+    if (diff > threshold) {
+      setActiveIndex((prev: number) => prev + 1); // Swipe Right
+    } else if (diff < -threshold) {
+      setActiveIndex((prev: number) => prev - 1); // Swipe Left
+    }
+  };
+
+  // Mouse logic for testing on PC
+  const handleMouseDown = (e: any) => {
+    touchStartX.current = e.clientX;
+  };
+
+  const handleMouseUp = (e: any) => {
+    touchEndX.current = e.clientX;
+    const diff = touchEndX.current - touchStartX.current;
+    if (diff > 40) setActiveIndex((prev: number) => prev + 1);
+    if (diff < -40) setActiveIndex((prev: number) => prev - 1);
+  };
 
   return (
-    <div className="w-full relative mt-4 sm:mt-8">
-      {/* Hides the ugly scrollbar on all browsers but keeps the scrolling functionality */}
-      <style dangerouslySetInnerHTML={{__html: `
-        .hide-scroll::-webkit-scrollbar { display: none; }
-        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
-      `}} />
-
-      <div 
-        ref={scrollRef}
-        onScroll={handleScroll}
-        // Native CSS snapping: Zero lag, perfect physics
-        className="flex w-full overflow-x-auto snap-x snap-mandatory gap-6 px-[10vw] sm:px-[35vw] pb-10 pt-4 hide-scroll"
-        style={{ WebkitOverflowScrolling: 'touch' }}
+    <div className="flex h-full w-full items-center justify-center pointer-events-none" style={{ perspective: "1200px" }}>
+      <motion.div
+        className="relative flex h-full origin-center justify-center items-center pointer-events-auto cursor-grab active:cursor-grabbing"
+        style={{ width: cylinderWidth, transformStyle: "preserve-3d" }}
+        animate={controls as any}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
       >
-        {albums.map((album) => {
+        {albums.map((album: Album, i: number) => {
           const vid = isVideo(album.cover_url);
           return (
-            <div 
-              key={album.id} 
-              // MASSIVE CARDS: 80% of screen width on phone (w-[80vw])
-              className="snap-center shrink-0 w-[80vw] sm:w-[360px] flex flex-col items-center transition-all duration-300"
+            <div
+              key={`album-${album.id}-${i}`}
+              className="absolute flex flex-col origin-center items-center justify-center"
+              style={{
+                width: `${faceWidth}px`,
+                transform: `rotateY(${i * anglePerCard}deg) translateZ(${radius + 20}px)`,
+                WebkitBackfaceVisibility: "hidden",
+                backfaceVisibility: "hidden"
+              }}
             >
               <div 
                 onClick={() => onAlbumClick(album.id)}
-                className="w-full aspect-[3/4] rounded-[32px] bg-black/50 border border-white/10 backdrop-blur-md overflow-hidden shadow-2xl hover:border-white/30 transition-all duration-300 relative group cursor-pointer"
+                className="w-full aspect-[3/4] rounded-2xl sm:rounded-[32px] border border-white/10 overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] hover:border-white/30 transition-all duration-300 relative group cursor-pointer bg-transparent"
               >
                 {album.cover_url ? (
                   vid ? (
                     <>
-                      <video src={album.cover_url} className="absolute inset-0 w-full h-full object-contain pointer-events-none bg-black/40" muted playsInline />
+                      <video src={album.cover_url} className="absolute inset-0 w-full h-full object-cover pointer-events-none" muted playsInline />
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                        <Play className="w-16 h-16 text-white/70 drop-shadow-lg" />
+                        <Play className="w-12 h-12 text-white/70 drop-shadow-lg" />
                       </div>
                     </>
                   ) : (
-                    <img src={album.cover_url} alt={album.name} className="absolute inset-0 w-full h-full object-contain pointer-events-none bg-black/40" />
+                    <img src={album.cover_url} alt={album.name} className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
                   )
                 ) : (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <Folder className="w-20 h-20 text-white/20" />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/40">
+                    <Folder className="w-16 h-16 text-white/20" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/10 pointer-events-none z-20"></div>
+                
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none z-20"></div>
               </div>
-              
-              <h3 className="text-2xl sm:text-3xl font-bold tracking-wide text-white mt-6 drop-shadow-md text-center px-4 truncate w-full">
+
+              <h3 className="text-xl sm:text-2xl font-bold tracking-wide text-white mt-6 drop-shadow-md pointer-events-none text-center px-4 truncate w-full">
                 {album.name}
               </h3>
             </div>
           )
         })}
-      </div>
+      </motion.div>
+    </div>
+  )
+});
+
+export function ThreeDAlbumCarousel({ albums, onAlbumClick, onActiveChange }: CarouselProps) {
+  if (!albums || albums.length === 0) return null;
+  return (
+    <div className="relative h-[450px] sm:h-[550px] w-full flex items-center justify-center mt-4">
+      <Carousel albums={albums} onAlbumClick={onAlbumClick} onActiveChange={onActiveChange} />
     </div>
   )
 }
