@@ -22,19 +22,17 @@ const Carousel = memo(
     onAlbumClick: (id: string) => void
     onActiveChange: (album: Album) => void
   }) => {
-    // Dynamic sizing to prevent mobile crashes!
+    // Safe default width so the app never renders "null" and goes blank
     const [faceWidth, setFaceWidth] = useState(300);
-    const [isMounted, setIsMounted] = useState(false);
     
     const [activeIndex, setActiveIndex] = useState(0)
     const controls = useAnimation()
 
-    // Calculates the perfect size for the screen immediately after loading
+    // Safely updates size on the client without blocking the screen
     useEffect(() => {
-      setIsMounted(true);
       const handleResize = () => {
-        // Sets card width to 70% of the screen width on phones, but caps it at 360px for PCs
-        setFaceWidth(Math.min(window.innerWidth * 0.70, 360));
+        // 260px for phones, up to 380px for PC
+        setFaceWidth(window.innerWidth < 640 ? 260 : Math.min(window.innerWidth * 0.4, 380));
       };
       handleResize(); 
       window.addEventListener("resize", handleResize);
@@ -56,13 +54,11 @@ const Carousel = memo(
     }, [activeIndex, albums, onActiveChange]);
 
     useEffect(() => {
-      if (isMounted) {
-        controls.start({
-          rotateY: activeIndex * -anglePerCard,
-          transition: { type: "spring", stiffness: 150, damping: 25, mass: 0.5 }
-        })
-      }
-    }, [activeIndex, controls, anglePerCard, isMounted])
+      controls.start({
+        rotateY: activeIndex * -anglePerCard,
+        transition: { type: "spring", stiffness: 150, damping: 25, mass: 0.5 }
+      })
+    }, [activeIndex, controls, anglePerCard])
 
     const handleDragEnd = (...args: any[]) => {
       const info = args[1];
@@ -74,9 +70,6 @@ const Carousel = memo(
         setActiveIndex(prev => prev + 1)
       }
     }
-
-    // Protects the app from crashing before the screen size is known
-    if (!isMounted) return null;
 
     return (
       <div
@@ -157,8 +150,9 @@ export function ThreeDAlbumCarousel({
   if (!albums || albums.length === 0) return null;
 
   return (
-    // Height uses 'vh' (viewport height) to perfectly scale down on phones and up on monitors
-    <div className="relative h-[55vh] min-h-[350px] max-h-[600px] w-full overflow-hidden flex items-center justify-center mt-4 sm:mt-8">
+    // THE FIX: Removed `overflow-hidden` which crashes 3D rendering on mobile Safari/Chrome.
+    // Also added absolute heights so it never collapses to 0 pixels tall!
+    <div className="relative h-[500px] sm:h-[600px] w-full flex items-center justify-center mt-4 sm:mt-8">
       <Carousel
         albums={albums}
         onAlbumClick={onAlbumClick}
