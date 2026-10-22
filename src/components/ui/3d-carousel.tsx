@@ -21,14 +21,11 @@ interface CarouselProps {
 const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) => {
   const [faceWidth, setFaceWidth] = useState(260);
   const controls = useAnimation();
-  
-  // This motion value stores the exact rotation of the cylinder
   const rotation = useMotionValue(0);
   const dragStartTime = useRef(0);
 
   useEffect(() => {
     const handleResize = () => {
-      // Big, beautiful cards taking up 65% of the screen
       setFaceWidth(Math.min(window.innerWidth * 0.65, 340));
     };
     handleResize();
@@ -38,8 +35,6 @@ const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) 
 
   const displayCount = Math.max(albums.length, 6);
   const anglePerCard = 360 / displayCount;
-  
-  // Mathematically calculates the exact radius needed to make a perfect 3D circle of cards
   const radius = (faceWidth / 2) / Math.tan(Math.PI / displayCount) + 30; 
 
   const isVideo = (url?: string | null) => /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url || "");
@@ -52,15 +47,12 @@ const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) 
 
   const handleDragStart = () => {
     dragStartTime.current = Date.now();
-    // Immediately stop any snapping animation so your finger has 100% control
     controls.stop(); 
   };
 
   const handleDrag = (_: any, info: any) => {
-    // THE FIX: 1-to-1 Finger Tracking. The cylinder moves exactly as your finger moves.
     rotation.set(rotation.get() + info.delta.x * 0.25);
     
-    // Updates the Edit/Delete icons instantly as you drag between cards
     const currentAngle = rotation.get();
     const index = Math.round(currentAngle / -anglePerCard);
     const wrappedIndex = ((index % albums.length) + albums.length) % albums.length;
@@ -71,13 +63,11 @@ const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) 
     const currentAngle = rotation.get();
     let targetIndex = Math.round(currentAngle / -anglePerCard);
 
-    // If you do a fast flick, it will boost you one card over
     if (info.velocity.x > 300) targetIndex -= 1;
     else if (info.velocity.x < -300) targetIndex += 1;
 
     const targetAngle = targetIndex * -anglePerCard;
 
-    // When you let go, snap perfectly to the nearest card
     controls.start({
       rotateY: targetAngle,
       transition: { type: "spring", stiffness: 200, damping: 30 }
@@ -88,7 +78,6 @@ const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) 
   };
 
   const handleCardClick = (id: string) => {
-    // Only enter the album if it was a quick tap, not a long drag
     if (Date.now() - dragStartTime.current < 200) {
       onAlbumClick(id);
     }
@@ -102,7 +91,7 @@ const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) 
         animate={controls as any}
         {...({
           drag: "x",
-          dragMomentum: false, // THE FIX: Disables automatic spinning. It stops the second you lift your finger.
+          dragMomentum: false, 
           onDragStart: handleDragStart,
           onDrag: handleDrag,
           onDragEnd: handleDragEnd
@@ -117,13 +106,13 @@ const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) 
               style={{
                 width: `${faceWidth}px`,
                 transform: `rotateY(${i * anglePerCard}deg) translateZ(${radius}px)`,
-                WebkitBackfaceVisibility: "hidden", // Forces cards on the back to be invisible so text is never backwards
-                backfaceVisibility: "hidden"
+                /* BUG FIX: Removed backface-visibility css that crashes mobile rendering */
               }}
             >
               <div 
                 onClick={() => handleCardClick(album.id)}
-                className="w-full aspect-[3/4] rounded-2xl sm:rounded-[32px] bg-black/40 border border-white/10 backdrop-blur-md overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] hover:border-white/30 transition-all duration-300 relative group cursor-pointer"
+                /* BUG FIX: Replaced backdrop-blur with a solid black tint to prevent 3D clipping */
+                className="w-full aspect-[3/4] rounded-2xl sm:rounded-[32px] bg-black/80 border border-white/10 overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] transition-all duration-300 relative group cursor-pointer"
               >
                 {album.cover_url ? (
                   vid ? (
@@ -141,7 +130,7 @@ const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) 
                     <Folder className="w-16 h-16 text-white/20" />
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/10 pointer-events-none z-20"></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none z-20"></div>
               </div>
 
               <h3 className="text-xl sm:text-2xl font-bold tracking-wide text-white mt-6 drop-shadow-md pointer-events-none text-center px-4 truncate w-full">
