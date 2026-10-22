@@ -1,28 +1,9 @@
 "use client"
 // @ts-nocheck
 
-import { memo, useLayoutEffect, useEffect, useState } from "react"
+import { memo, useEffect, useState } from "react"
 import { motion, useAnimation } from "framer-motion"
 import { Folder, Play } from "lucide-react"
-
-export const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect
-const IS_SERVER = typeof window === "undefined"
-
-export function useMediaQuery(query: string, { defaultValue = false } = {}): boolean {
-  const getMatches = (query: string): boolean => {
-    if (IS_SERVER) return defaultValue
-    return window.matchMedia(query).matches
-  }
-  const [matches, setMatches] = useState<boolean>(() => getMatches(query))
-  useIsomorphicLayoutEffect(() => {
-    const matchMedia = window.matchMedia(query)
-    const handleChange = () => setMatches(getMatches(query))
-    handleChange()
-    matchMedia.addEventListener("change", handleChange)
-    return () => matchMedia.removeEventListener("change", handleChange)
-  }, [query])
-  return matches
-}
 
 interface Album {
   id: string;
@@ -41,11 +22,25 @@ const Carousel = memo(
     onAlbumClick: (id: string) => void
     onActiveChange: (album: Album) => void
   }) => {
-    const isScreenSizeSm = useMediaQuery("(max-width: 640px)")
+    // Dynamic sizing to prevent mobile crashes!
+    const [faceWidth, setFaceWidth] = useState(300);
+    const [isMounted, setIsMounted] = useState(false);
+    
     const [activeIndex, setActiveIndex] = useState(0)
     const controls = useAnimation()
-    
-    const faceWidth = isScreenSizeSm ? 280 : 400 
+
+    // Calculates the perfect size for the screen immediately after loading
+    useEffect(() => {
+      setIsMounted(true);
+      const handleResize = () => {
+        // Sets card width to 70% of the screen width on phones, but caps it at 360px for PCs
+        setFaceWidth(Math.min(window.innerWidth * 0.70, 360));
+      };
+      handleResize(); 
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
+    }, []);
+
     const displayCount = Math.max(albums.length, 6) 
     const cylinderWidth = faceWidth * displayCount
     const radius = cylinderWidth / (2 * Math.PI)
@@ -61,11 +56,13 @@ const Carousel = memo(
     }, [activeIndex, albums, onActiveChange]);
 
     useEffect(() => {
-      controls.start({
-        rotateY: activeIndex * -anglePerCard,
-        transition: { type: "spring", stiffness: 150, damping: 25, mass: 0.5 }
-      })
-    }, [activeIndex, controls, anglePerCard])
+      if (isMounted) {
+        controls.start({
+          rotateY: activeIndex * -anglePerCard,
+          transition: { type: "spring", stiffness: 150, damping: 25, mass: 0.5 }
+        })
+      }
+    }, [activeIndex, controls, anglePerCard, isMounted])
 
     const handleDragEnd = (...args: any[]) => {
       const info = args[1];
@@ -78,17 +75,18 @@ const Carousel = memo(
       }
     }
 
+    // Protects the app from crashing before the screen size is known
+    if (!isMounted) return null;
+
     return (
       <div
-        className="flex h-full items-center justify-center pointer-events-none"
+        className="flex h-full w-full items-center justify-center pointer-events-none"
         style={{ perspective: "1500px", transformStyle: "preserve-3d" }}
       >
         <motion.div
           className="relative flex h-full origin-center cursor-grab active:cursor-grabbing justify-center items-center pointer-events-auto"
           style={{ width: cylinderWidth, transformStyle: "preserve-3d" }}
           animate={controls as any}
-          
-          /* THE ULTIMATE FIX: This blackbox hides the drag events from VS Code completely */
           {...({
             drag: "x",
             dragConstraints: { left: 0, right: 0 },
@@ -104,15 +102,13 @@ const Carousel = memo(
                 className="absolute flex flex-col origin-center items-center justify-center"
                 style={{
                   width: `${faceWidth}px`,
-                  transform: `rotateY(${i * anglePerCard}deg) translateZ(${radius + 50}px)`,
+                  transform: `rotateY(${i * anglePerCard}deg) translateZ(${radius + 40}px)`,
                   WebkitBackfaceVisibility: "hidden", 
                   backfaceVisibility: "hidden"
                 }}
               >
                 <motion.div 
                   className="w-full aspect-[3/4] rounded-[32px] bg-black/50 border border-white/10 backdrop-blur-md overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] hover:border-white/30 transition-all duration-300 relative group"
-                  
-                  /* THE ULTIMATE FIX: Hides the onTap event from VS Code completely */
                   {...({
                     onTap: () => onAlbumClick(album.id)
                   } as any)}
@@ -137,7 +133,7 @@ const Carousel = memo(
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none z-20"></div>
                 </motion.div>
 
-                <h3 className="text-2xl sm:text-3xl font-bold tracking-wide text-white mt-8 drop-shadow-md pointer-events-none text-center px-4 truncate w-full">
+                <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-wide text-white mt-6 drop-shadow-md pointer-events-none text-center px-4 truncate w-full">
                   {album.name}
                 </h3>
               </motion.div>
@@ -161,7 +157,8 @@ export function ThreeDAlbumCarousel({
   if (!albums || albums.length === 0) return null;
 
   return (
-    <div className="relative h-[700px] w-full overflow-hidden flex items-center justify-center">
+    // Height uses 'vh' (viewport height) to perfectly scale down on phones and up on monitors
+    <div className="relative h-[55vh] min-h-[350px] max-h-[600px] w-full overflow-hidden flex items-center justify-center mt-4 sm:mt-8">
       <Carousel
         albums={albums}
         onAlbumClick={onAlbumClick}
