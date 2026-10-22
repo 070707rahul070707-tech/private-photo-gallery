@@ -22,16 +22,13 @@ const Carousel = memo(
     onAlbumClick: (id: string) => void
     onActiveChange: (album: Album) => void
   }) => {
-    // Start with a small default width so it doesn't flash giant on load
     const [faceWidth, setFaceWidth] = useState(200);
-    
     const [activeIndex, setActiveIndex] = useState(0)
     const controls = useAnimation()
 
     useEffect(() => {
       const handleResize = () => {
-        // THE FIX: Exactly 55% of the screen width on phones, maxing out at 320px on PC
-        setFaceWidth(Math.min(window.innerWidth * 0.55, 320));
+        setFaceWidth(Math.min(window.innerWidth * 0.60, 340));
       };
       handleResize(); 
       window.addEventListener("resize", handleResize);
@@ -62,7 +59,7 @@ const Carousel = memo(
     const handleDragEnd = (...args: any[]) => {
       const info = args[1];
       if (!info) return;
-      const threshold = 30; // Made slightly more sensitive for smaller cards
+      const threshold = 30; 
       if (info.offset.x > threshold || info.velocity.x > 300) {
         setActiveIndex(prev => prev - 1)
       } else if (info.offset.x < -threshold || info.velocity.x < -300) {
@@ -94,7 +91,6 @@ const Carousel = memo(
                 className="absolute flex flex-col origin-center items-center justify-center"
                 style={{
                   width: `${faceWidth}px`,
-                  // Brought the cards slightly closer together (radius + 20)
                   transform: `rotateY(${i * anglePerCard}deg) translateZ(${radius + 20}px)`,
                   WebkitBackfaceVisibility: "hidden", 
                   backfaceVisibility: "hidden"
@@ -109,13 +105,13 @@ const Carousel = memo(
                   {album.cover_url ? (
                     vid ? (
                       <>
-                        <video src={album.cover_url} className="absolute inset-0 w-full h-full object-cover pointer-events-none" muted playsInline />
+                        <video src={album.cover_url} className="absolute inset-0 w-full h-full object-contain pointer-events-none" muted playsInline />
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                           <Play className="w-12 h-12 text-white/70 drop-shadow-lg" />
                         </div>
                       </>
                     ) : (
-                      <img src={album.cover_url} alt={album.name} className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+                      <img src={album.cover_url} alt={album.name} className="absolute inset-0 w-full h-full object-contain pointer-events-none" />
                     )
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -126,7 +122,6 @@ const Carousel = memo(
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30 pointer-events-none z-20"></div>
                 </motion.div>
 
-                {/* Shrunk the title font to match the sleeker cards */}
                 <h3 className="text-lg sm:text-xl font-medium tracking-wide text-white mt-4 sm:mt-6 drop-shadow-md pointer-events-none text-center px-4 truncate w-full">
                   {album.name}
                 </h3>
@@ -151,7 +146,6 @@ export function ThreeDAlbumCarousel({
   if (!albums || albums.length === 0) return null;
 
   return (
-    // Reduced container height so it doesn't take up the entire phone screen vertically
     <div className="relative h-[400px] sm:h-[500px] w-full flex items-center justify-center mt-4">
       <Carousel
         albums={albums}
