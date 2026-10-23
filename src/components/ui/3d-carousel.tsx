@@ -1,7 +1,7 @@
 "use client"
 // @ts-nocheck
 
-import { memo, useEffect, useState } from "react"
+import { memo, useEffect, useState, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Folder, Play } from "lucide-react"
 
@@ -21,10 +21,12 @@ interface CarouselProps {
 const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [faceWidth, setFaceWidth] = useState(280);
+  
+  const touchStartX = useRef(0);
+  const dragStartTime = useRef(0);
 
   useEffect(() => {
     const handleResize = () => {
-      // Big center card: 65% of screen
       setFaceWidth(Math.min(window.innerWidth * 0.65, 340));
     };
     handleResize();
@@ -41,51 +43,60 @@ const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) 
     }
   }, [activeIndex, n, albums, onActiveChange]);
 
-  const handleDragEnd = (_: any, info: any) => {
-    const swipe = info.offset.x;
-    const velocity = info.velocity.x;
-    
-    // PERFECT SWIPE MATH: Swipe Left (negative) = Next Card. Swipe Right (positive) = Previous Card.
-    if (swipe < -30 || velocity < -300) {
+  // NATIVE, LAG-FREE SWIPE PHYSICS
+  const handleTouchStart = (e: any) => {
+    touchStartX.current = e.touches ? e.touches[0].clientX : e.clientX;
+    dragStartTime.current = Date.now();
+  };
+
+  const handleTouchEnd = (e: any) => {
+    const touchEndX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    const diff = touchStartX.current - touchEndX;
+    const timeDiff = Date.now() - dragStartTime.current;
+
+    // Snappy detection: Triggers if you drag far enough OR flick quickly
+    if (diff > 30 || (diff > 10 && timeDiff < 200)) {
       setActiveIndex(prev => prev + 1); 
-    } else if (swipe > 30 || velocity > 300) {
+    } else if (diff < -30 || (diff < -10 && timeDiff < 200)) {
       setActiveIndex(prev => prev - 1); 
+    }
+  };
+
+  const handleCardClick = (albumId: string, isCenter: boolean, offset: number) => {
+    const timeDiff = Date.now() - dragStartTime.current;
+    // Safely differentiates between a purposeful click and an accidental tap while swiping
+    if (timeDiff < 250) {
+      if (isCenter) onAlbumClick(albumId);
+      else setActiveIndex(prev => prev + Math.sign(offset));
     }
   };
 
   const isVideo = (url?: string | null) => /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url || "");
 
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
-      
-      {/* Invisible drag layer covering the whole screen for smooth swiping */}
-      <motion.div
-        className="absolute inset-0 z-50 cursor-grab active:cursor-grabbing"
-        drag="x"
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.2}
-        onDragEnd={handleDragEnd}
-      />
-
+    <div 
+      className="relative flex h-full w-full items-center justify-center overflow-hidden touch-pan-y"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onMouseDown={handleTouchStart}
+      onMouseUp={handleTouchEnd}
+    >
       <div className="relative w-full h-full flex items-center justify-center pointer-events-none">
         <AnimatePresence initial={false}>
           {albums.map((album, i) => {
-            // Calculates where the card is relative to the active index
             let offset = (i - (activeIndex % n));
             if (offset > n / 2) offset -= n;
             if (offset < -n / 2) offset += n;
 
-            // Only show 3 cards (center, left, right)
             if (Math.abs(offset) > 1.5) return null;
 
             const isCenter = offset === 0;
             const vid = isVideo(album.cover_url);
 
-            // FAKE 3D MATH: No browser crashing. Just standard X/Y/Scale.
-            const xOffset = offset * (faceWidth * 0.65); // Spacing between cards
-            const scale = isCenter ? 1 : 0.75; // Side cards are 75% size
-            const zIndex = 10 - Math.abs(offset); // Center card is always on top
-            const opacity = isCenter ? 1 : 0.6; // Side cards are slightly faded
+            const xOffset = offset * (faceWidth * 0.65); 
+            const scale = isCenter ? 1 : 0.75; 
+            const zIndex = 10 - Math.abs(offset); 
+            const opacity = isCenter ? 1 : 0.6; 
 
             return (
               <motion.div
@@ -94,13 +105,11 @@ const Carousel = memo(({ albums, onAlbumClick, onActiveChange }: CarouselProps) 
                 style={{ width: faceWidth, zIndex }}
                 initial={false}
                 animate={{ x: xOffset, scale, opacity }}
-                transition={{ type: "spring", stiffness: 260, damping: 25 }}
+                // FASTER ANIMATION: Higher stiffness and lower damping snaps the cards instantly without lag
+                transition={{ type: "spring", stiffness: 350, damping: 25 }}
               >
                 <div 
-                  onClick={() => {
-                    if (isCenter) onAlbumClick(album.id);
-                    else setActiveIndex(prev => prev + Math.sign(offset)); 
-                  }}
+                  onClick={() => handleCardClick(album.id, isCenter, offset)}
                   className={`w-full aspect-[3/4] rounded-2xl sm:rounded-[32px] border border-white/10 overflow-hidden shadow-2xl transition-all duration-300 relative cursor-pointer ${isCenter ? 'bg-black/60 shadow-[0_20px_50px_rgba(0,0,0,0.8)]' : 'bg-black/90'}`}
                 >
                   {album.cover_url ? (
