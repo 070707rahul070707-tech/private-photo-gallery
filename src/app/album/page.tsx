@@ -5,7 +5,6 @@ import {
   ArrowLeft, Upload, Trash2, X, ChevronLeft, 
   ChevronRight, Loader2, Image as ImageIcon, Play, ImagePlus, Move, ListOrdered, Save
 } from "lucide-react";
-import CardDeckCarousel from "@/components/ui/card-deck-carousel";
 import { 
   getAlbumMediaSecure, 
   uploadMediaSecure, 
@@ -37,6 +36,10 @@ export default function AlbumPage() {
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
   const isDragging = useRef(false);
+
+  // Native Slider Refs
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isLightboxOpen = useRef(false);
 
   const isVideo = (filename: string) => {
     return /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(filename || "");
@@ -158,6 +161,29 @@ export default function AlbumPage() {
     loadMedia();
   }, []);
 
+  // Sync native scroll position when lightbox opens
+  useEffect(() => {
+    if (selectedIndex !== null) {
+      if (!isLightboxOpen.current && scrollContainerRef.current) {
+        const container = scrollContainerRef.current;
+        container.scrollTo({ left: container.clientWidth * selectedIndex, behavior: "instant" });
+        isLightboxOpen.current = true;
+      }
+    } else {
+      isLightboxOpen.current = false;
+    }
+  }, [selectedIndex]);
+
+  // Update selected index naturally as the user swipes
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (!isLightboxOpen.current) return;
+    const container = e.currentTarget;
+    const newIndex = Math.round(container.scrollLeft / container.clientWidth);
+    if (newIndex !== selectedIndex && newIndex >= 0 && newIndex < media.length) {
+      setSelectedIndex(newIndex);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#050505]">
@@ -169,10 +195,11 @@ export default function AlbumPage() {
   return (
     <div className="w-full h-screen overflow-y-auto overflow-x-hidden text-white relative font-sans selection:bg-white/20 bg-[#050505]">
       
-      {/* Premium Twinkling Background restored */}
+      {/* Premium Twinkling Background */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="ambient-glow glow-blue"></div>
         <div className="ambient-glow glow-purple"></div>
+        
         <div className="twinkle-light t1"></div>
         <div className="twinkle-light t2"></div>
         <div className="twinkle-light t3"></div>
@@ -190,7 +217,7 @@ export default function AlbumPage() {
         <div className="twinkle-light t15"></div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 min-h-screen pb-24">
+      <div className="relative z-10 max-w-7xl mx-auto px-6 py-12 lg:px-8 min-h-screen pb-24">
         
         {/* Header Area */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-12">
@@ -210,6 +237,7 @@ export default function AlbumPage() {
           </div>
 
           <div className="flex items-center gap-3 bg-transparent p-2 rounded-[24px] border border-white/10 backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+            
             {isReorderMode ? (
               <>
                 <button
@@ -270,14 +298,14 @@ export default function AlbumPage() {
           </div>
         </div>
 
-        {/* Premium Masonry Grid - Restored your large uncropped images */}
+        {/* Media Grid */}
         {media.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 border border-white/10 bg-transparent rounded-[32px] backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
             <ImageIcon className="w-12 h-12 text-white/30 mb-4" />
             <p className="text-white/60 font-light">No media in this album yet.</p>
           </div>
         ) : (
-          <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 space-y-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {media.map((item, index) => {
               const video = isVideo(item.filename);
               return (
@@ -293,22 +321,19 @@ export default function AlbumPage() {
                     if (isDragging.current) return;
                     setSelectedIndex(index);
                   }}
-                  /* Changed aspect-square back to natural height, removed hard borders, restored large rounded styling */
-                  className={`group relative break-inside-avoid rounded-[24px] sm:rounded-[32px] overflow-hidden bg-black/40 border backdrop-blur-md shadow-[0_15px_40px_rgba(0,0,0,0.5)] transition-all duration-500 ${
+                  className={`group relative aspect-square rounded-[24px] overflow-hidden bg-black/40 border backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.1)] transition-all duration-500 flex items-center justify-center ${
                     isReorderMode 
-                      ? "cursor-grab active:cursor-grabbing border-blue-500/40 hover:border-blue-400 scale-[0.98] hover:scale-100" 
-                      : "cursor-pointer border-white/10 hover:border-white/30 hover:shadow-[0_25px_50px_rgba(0,0,0,0.8)] hover:-translate-y-1"
+                      ? "cursor-grab active:cursor-grabbing border-blue-500/40 hover:border-blue-400 scale-95 hover:scale-100" 
+                      : "cursor-pointer border-white/10 hover:border-white/30"
                   }`}
                 >
                   {video ? (
                     <>
                       <video 
                         src={item.url} 
-                        className={`w-full h-auto object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-105'}`} 
+                        className={`w-full h-full object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-110'}`} 
                         muted 
                         playsInline
-                        autoPlay
-                        loop
                       />
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white/90">
@@ -320,7 +345,7 @@ export default function AlbumPage() {
                     <img
                       src={item.url}
                       alt={`Media ${index}`}
-                      className={`w-full h-auto object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-105'}`}
+                      className={`w-full h-full object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-110'}`}
                     />
                   )}
                   
@@ -329,7 +354,7 @@ export default function AlbumPage() {
                       <Move className="w-8 h-8 text-white drop-shadow-md" />
                     </div>
                   ) : (
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-300 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
                       <div className="transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
                         <div className="p-3 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white">
                           {video ? <Play className="w-6 h-6 fill-white" /> : <ImageIcon className="w-6 h-6" />}
@@ -344,9 +369,9 @@ export default function AlbumPage() {
         )}
       </div>
 
-      {/* Interactive 3D Deck Lightbox */}
+      {/* Plan A: Native Full-Screen Lightbox Slider */}
       {selectedIndex !== null && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-3xl animate-in fade-in duration-200 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/95 backdrop-blur-3xl animate-in fade-in duration-200">
           
           {/* Action Overlay Floating on Top */}
           <div className="absolute top-6 right-6 flex items-center gap-4 z-50 pointer-events-auto">
@@ -376,16 +401,32 @@ export default function AlbumPage() {
             </button>
           </div>
 
-          {/* The Stacked Card Deck Component */}
-          <CardDeckCarousel
-            slides={media.map(m => ({ image: m.url }))}
-            initialTop={selectedIndex}
-            onChange={(idx) => setSelectedIndex(idx)} 
-            height="100vh"
-            aspect="1 / 1"
-            cardWidth="min(95vw, 800px)"
-            scatter={7}
-          />
+          {/* Native Swipe Track */}
+          <div 
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 w-full h-full flex overflow-x-auto snap-x snap-mandatory touch-pan-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+          >
+            {media.map((item, i) => (
+              <div key={item.id} className="min-w-full h-full flex items-center justify-center snap-center p-4 sm:p-12 relative">
+                {isVideo(item.filename) ? (
+                  <video 
+                    src={item.url} 
+                    className="max-w-full max-h-[85vh] object-contain rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.5)]" 
+                    controls 
+                    playsInline 
+                    autoPlay={i === selectedIndex}
+                  />
+                ) : (
+                  <img 
+                    src={item.url} 
+                    alt={`Full size ${i}`} 
+                    className="max-w-full max-h-[85vh] object-contain rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.5)]" 
+                  />
+                )}
+              </div>
+            ))}
+          </div>
           
         </div>
       )}
