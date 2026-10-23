@@ -169,11 +169,10 @@ export default function AlbumPage() {
   return (
     <div className="w-full h-screen overflow-y-auto overflow-x-hidden text-white relative font-sans selection:bg-white/20 bg-[#050505]">
       
-      {/* Premium Twinkling Background */}
+      {/* Premium Twinkling Background restored */}
       <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
         <div className="ambient-glow glow-blue"></div>
         <div className="ambient-glow glow-purple"></div>
-        
         <div className="twinkle-light t1"></div>
         <div className="twinkle-light t2"></div>
         <div className="twinkle-light t3"></div>
@@ -191,7 +190,7 @@ export default function AlbumPage() {
         <div className="twinkle-light t15"></div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-12 lg:px-8 min-h-screen pb-24">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 min-h-screen pb-24">
         
         {/* Header Area */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-12">
@@ -211,7 +210,6 @@ export default function AlbumPage() {
           </div>
 
           <div className="flex items-center gap-3 bg-transparent p-2 rounded-[24px] border border-white/10 backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
-            
             {isReorderMode ? (
               <>
                 <button
@@ -272,14 +270,14 @@ export default function AlbumPage() {
           </div>
         </div>
 
-        {/* Media Grid */}
+        {/* Premium Masonry Grid - Restored your large uncropped images */}
         {media.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 border border-white/10 bg-transparent rounded-[32px] backdrop-blur-md shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
             <ImageIcon className="w-12 h-12 text-white/30 mb-4" />
             <p className="text-white/60 font-light">No media in this album yet.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 space-y-6">
             {media.map((item, index) => {
               const video = isVideo(item.filename);
               return (
@@ -295,19 +293,22 @@ export default function AlbumPage() {
                     if (isDragging.current) return;
                     setSelectedIndex(index);
                   }}
-                  className={`group relative aspect-square rounded-[24px] overflow-hidden bg-black/40 border backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.1)] transition-all duration-500 flex items-center justify-center ${
+                  /* Changed aspect-square back to natural height, removed hard borders, restored large rounded styling */
+                  className={`group relative break-inside-avoid rounded-[24px] sm:rounded-[32px] overflow-hidden bg-black/40 border backdrop-blur-md shadow-[0_15px_40px_rgba(0,0,0,0.5)] transition-all duration-500 ${
                     isReorderMode 
-                      ? "cursor-grab active:cursor-grabbing border-blue-500/40 hover:border-blue-400 scale-95 hover:scale-100" 
-                      : "cursor-pointer border-white/10 hover:border-white/30"
+                      ? "cursor-grab active:cursor-grabbing border-blue-500/40 hover:border-blue-400 scale-[0.98] hover:scale-100" 
+                      : "cursor-pointer border-white/10 hover:border-white/30 hover:shadow-[0_25px_50px_rgba(0,0,0,0.8)] hover:-translate-y-1"
                   }`}
                 >
                   {video ? (
                     <>
                       <video 
                         src={item.url} 
-                        className={`w-full h-full object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-110'}`} 
+                        className={`w-full h-auto object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-105'}`} 
                         muted 
                         playsInline
+                        autoPlay
+                        loop
                       />
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="p-3 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white/90">
@@ -319,7 +320,7 @@ export default function AlbumPage() {
                     <img
                       src={item.url}
                       alt={`Media ${index}`}
-                      className={`w-full h-full object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-110'}`}
+                      className={`w-full h-auto object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-105'}`}
                     />
                   )}
                   
@@ -328,7 +329,7 @@ export default function AlbumPage() {
                       <Move className="w-8 h-8 text-white drop-shadow-md" />
                     </div>
                   ) : (
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-300 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
                       <div className="transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
                         <div className="p-3 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white">
                           {video ? <Play className="w-6 h-6 fill-white" /> : <ImageIcon className="w-6 h-6" />}
