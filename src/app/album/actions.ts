@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@supabase/supabase-js";
+import { revalidatePath } from "next/cache";
 
 // Initialize Supabase securely using your secret role key
 const supabase = createClient(
@@ -51,17 +52,29 @@ export async function uploadMediaSecure(formData: FormData, albumId: string) {
       .from("photos")
       .upload(fileName, file);
 
-    if (uploadError) continue;
+    // Throw the error so the frontend catch block can log it
+    if (uploadError) {
+      console.error("Storage upload error:", uploadError);
+      throw new Error(uploadError.message);
+    }
 
-    // 2. Save the reference in the database (we only save the filename now, not public URLs)
-    await supabase
+    // 2. Save the reference in the database
+    const { error: dbError } = await supabase
       .from("photos")
       .insert([{
         album_id: albumId,
         filename: fileName,
         image_url: fileName, 
       }]);
+
+    if (dbError) {
+      console.error("Database insert error:", dbError);
+      throw new Error(dbError.message);
+    }
   }
+  
+  // Clear the Next.js router cache so new images appear instantly
+  revalidatePath("/", "layout");
   return { success: true };
 }
 
@@ -70,12 +83,16 @@ export async function deleteMediaSecure(filename: string) {
   await supabase.storage.from("photos").remove([filename]);
   // Delete from database
   await supabase.from("photos").delete().eq("filename", filename);
+  
+  revalidatePath("/", "layout");
   return { success: true };
 }
 
 export async function setAlbumCoverSecure(albumId: string, filename: string) {
   // Save only the filename so the main albums page can generate a secure link later
   await supabase.from("albums").update({ cover_url: filename }).eq("id", albumId);
+  
+  revalidatePath("/", "layout");
   return { success: true };
 }
 
@@ -87,5 +104,7 @@ export async function saveMediaOrderSecure(orderItems: { id: string, created_at:
       .update({ created_at: item.created_at })
       .eq("id", item.id);
   }
+  
+  revalidatePath("/", "layout");
   return { success: true };
 }
