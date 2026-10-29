@@ -26,6 +26,7 @@ export default function AlbumPage() {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0); 
   const [isLoading, setIsLoading] = useState(true);
   const [isSettingCover, setIsSettingCover] = useState(false);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
@@ -57,21 +58,46 @@ export default function AlbumPage() {
   async function uploadMedia() {
     if (!files || files.length === 0) return;
     setIsUploading(true);
+    setUploadProgress(0);
 
     const albumId = new URLSearchParams(window.location.search).get("id");
     if (!albumId) return;
 
-    const formData = new FormData();
-    Array.from(files).forEach(file => {
-      formData.append("files", file);
-    });
+    const filesArray = Array.from(files);
+    const totalFiles = filesArray.length;
+    let completed = 0;
+    
+    // Upload files in batches of 3 to prevent server payload limits/timeouts
+    const concurrencyLimit = 3; 
 
-    await uploadMediaSecure(formData, albumId);
+    for (let i = 0; i < totalFiles; i += concurrencyLimit) {
+      const batch = filesArray.slice(i, i + concurrencyLimit);
+      
+      await Promise.all(batch.map(async (file) => {
+        const formData = new FormData();
+        formData.append("files", file);
+        
+        try {
+          // Note: Ensure your backend action is configured to handle single-file FormData arrays
+          await uploadMediaSecure(formData, albumId);
+        } catch (err) {
+          console.error(`Failed to upload ${file.name}`, err);
+        } finally {
+          completed++;
+          setUploadProgress(Math.round((completed / totalFiles) * 100));
+        }
+      }));
+    }
 
     setFiles(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     await loadMedia();
-    setIsUploading(false);
+    
+    // Brief delay so the user sees "100%" before it closes
+    setTimeout(() => {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }, 500);
   }
 
   async function deleteMedia() {
@@ -217,6 +243,28 @@ export default function AlbumPage() {
         <div className="twinkle-light t15"></div>
       </div>
 
+      {/* Upload Progress Bar Overlay */}
+      {isUploading && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md bg-black/80 backdrop-blur-xl border border-white/20 p-6 rounded-3xl shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-10">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+              <span className="text-white font-medium">Uploading media...</span>
+            </div>
+            <span className="text-blue-400 font-bold">{uploadProgress}%</span>
+          </div>
+          <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
+            <div 
+              className="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden"
+              style={{ width: `${uploadProgress}%` }}
+            >
+              {/* Optional shimmer effect on the progress bar */}
+              <div className="absolute inset-0 bg-white/20 w-full animate-[shimmer_2s_infinite]" />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-12 lg:px-8 min-h-screen pb-24">
         
         {/* Header Area */}
@@ -290,8 +338,17 @@ export default function AlbumPage() {
                   disabled={isUploading || !files || files.length === 0}
                   className="group flex items-center gap-2 bg-white text-black px-6 py-3 rounded-2xl font-bold hover:bg-[#e5e5e5] hover:-translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 transition-all"
                 >
-                  {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                  Upload
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      {uploadProgress}%
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5" />
+                      Upload
+                    </>
+                  )}
                 </button>
               </>
             )}
