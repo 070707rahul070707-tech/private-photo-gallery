@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { 
   ArrowLeft, Upload, Trash2, X, ChevronLeft, 
   ChevronRight, Loader2, Image as ImageIcon, Play, ImagePlus, Move, ListOrdered, Save
@@ -22,6 +23,7 @@ interface MediaItem {
 }
 
 export default function AlbumPage() {
+  const router = useRouter();
   const [files, setFiles] = useState<FileList | null>(null);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -78,7 +80,6 @@ export default function AlbumPage() {
         formData.append("files", file);
         
         try {
-          // Note: Ensure your backend action is configured to handle single-file FormData arrays
           await uploadMediaSecure(formData, albumId);
         } catch (err) {
           console.error(`Failed to upload ${file.name}`, err);
@@ -91,6 +92,10 @@ export default function AlbumPage() {
 
     setFiles(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    
+    // Give the database a brief moment to finish saving, then force Next.js to refresh
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    router.refresh();
     await loadMedia();
     
     // Brief delay so the user sees "100%" before it closes
@@ -109,6 +114,7 @@ export default function AlbumPage() {
     setSelectedIndex(null);
     
     await deleteMediaSecure(item.filename);
+    router.refresh();
     await loadMedia();
   }
 
@@ -174,6 +180,7 @@ export default function AlbumPage() {
     
     setIsSavingOrder(false);
     setIsReorderMode(false);
+    router.refresh();
     await loadMedia(); 
   };
 
