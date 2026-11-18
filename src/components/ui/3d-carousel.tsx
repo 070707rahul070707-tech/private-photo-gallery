@@ -2,7 +2,7 @@
 // @ts-nocheck
 
 import { memo, useEffect, useState, useRef } from "react"
-import { motion, useMotionValue, useTransform, useMotionValueEvent, animate } from "framer-motion"
+import { motion, useMotionValue, useTransform, animate } from "framer-motion"
 import { Folder, Play } from "lucide-react"
 
 interface Album {
@@ -28,7 +28,6 @@ function getCircularOffset(index: number, current: number, total: number) {
 
 const isVideo = (url?: string | null) => /\.(mp4|webm|ogg|mov|mkv)(\?|$)/i.test(url || "");
 
-// Individual card driven directly by GPU MotionValues (zero React re-renders while spinning)
 const CarouselCard = memo(({ album, index, total, progress, faceWidth, onSelect }: any) => {
   const spacing = faceWidth * 0.68;
 
@@ -37,12 +36,12 @@ const CarouselCard = memo(({ album, index, total, progress, faceWidth, onSelect 
   );
 
   const x = useTransform(offset, (o: number) => o * spacing);
-  const scale = useTransform(offset, [-2, -1, 0, 1, 2], [0.55, 0.78, 1, 0.78, 0.55]);
-  const opacity = useTransform(offset, [-2, -1.2, -1, 0, 1, 1.2, 2], [0, 0.2, 0.6, 1, 0.6, 0.2, 0]);
-  const rotateY = useTransform(offset, [-2, -1, 0, 1, 2], [28, 16, 0, -16, -28]);
+  const scale = useTransform(offset, [-2, -1, 0, 1, 2], [0.6, 0.78, 1, 0.78, 0.6]);
+  const opacity = useTransform(offset, [-2, -1.3, -1, 0, 1, 1.3, 2], [0, 0.15, 0.55, 1, 0.55, 0.15, 0]);
   const zIndex = useTransform(offset, (o: number) => Math.round(20 - Math.abs(o) * 5));
-  const titleOpacity = useTransform(offset, [-0.45, 0, 0.45], [0, 1, 0]);
-  const titleY = useTransform(offset, [-0.45, 0, 0.45], [10, 0, 10]);
+  const visibility = useTransform(offset, (o: number) => (Math.abs(o) > 2.2 ? "hidden" : "visible"));
+  const titleOpacity = useTransform(offset, [-0.4, 0, 0.4], [0, 1, 0]);
+  const titleY = useTransform(offset, [-0.4, 0, 0.4], [8, 0, 8]);
 
   const vid = isVideo(album.cover_url);
 
@@ -54,9 +53,8 @@ const CarouselCard = memo(({ album, index, total, progress, faceWidth, onSelect 
         x,
         scale,
         opacity,
-        rotateY,
         zIndex,
-        transformPerspective: 1000,
+        visibility,
       }}
     >
       <div
@@ -123,33 +121,13 @@ const Carousel = memo(({ albums, initialAlbumId, onAlbumClick, onActiveChange }:
   const dragState = useRef({
     active: false,
     startX: 0,
+    startProgress: 0,
     lastX: 0,
     lastTime: 0,
-    velocity: 0, // px per ms
+    velocity: 0,
     moved: false,
   });
 
-  // Restore last opened album if initialAlbumId arrives after mount
-  useEffect(() => {
-    if (initialAlbumId && n > 0) {
-      const found = albums.findIndex((a) => a.id === initialAlbumId);
-      if (found !== -1) {
-        animControls.current?.stop();
-        progress.set(found);
-      }
-    }
-  }, [initialAlbumId, n]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setFaceWidth(Math.min(window.innerWidth * 0.65, 340));
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  // Notify parent only when the centered album actually changes
   const reportActive = (val: number) => {
     if (n === 0) return;
     const idx = ((Math.round(val) % n) + n) % n;
@@ -160,25 +138,45 @@ const Carousel = memo(({ albums, initialAlbumId, onAlbumClick, onActiveChange }:
   };
 
   useEffect(() => {
+    if (initialAlbumId && n > 0) {
+      const found = albums.findIndex((a) => a.id === initialAlbumId);
+      if (found !== -1) {
+        animControls.current?.stop();
+        progress.set(found);
+        reportActive(found);
+      }
+    }
+  }, [initialAlbumId, n]);
+
+  useEffect(() => {
     reportActive(progress.get());
   }, [n, albums]);
 
-  useMotionValueEvent(progress, "change", (latest) => {
-    reportActive(latest);
-  });
+  useEffect(() => {
+    const handleResize = () => {
+      setFaceWidth(Math.min(window.innerWidth * 0.65, 340));
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const spinTo = (target: number, velocityCardsPerSec = 0) => {
     animControls.current?.stop();
     animControls.current = animate(progress, target, {
       type: "spring",
-      stiffness: 170,
-      damping: 26,
-      mass: 0.85,
+      stiffness: 260,
+      damping: 30,
+      mass: 0.75,
       velocity: velocityCardsPerSec,
+      onComplete: () => {
+        reportActive(target);
+      },
     });
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    if (n <= 1) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     animControls.current?.stop();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -186,6 +184,7 @@ const Carousel = memo(({ albums, initialAlbumId, onAlbumClick, onActiveChange }:
     dragState.current = {
       active: true,
       startX: e.clientX,
+      startProgress: progress.get(),
       lastX: e.clientX,
       lastTime: performance.now(),
       velocity: 0,
@@ -201,19 +200,19 @@ const Carousel = memo(({ albums, initialAlbumId, onAlbumClick, onActiveChange }:
     const dx = e.clientX - d.lastX;
     const dt = Math.max(1, now - d.lastTime);
 
-    if (Math.abs(e.clientX - d.startX) > 6) {
+    const totalDx = e.clientX - d.startX;
+    if (Math.abs(totalDx) > 6) {
       d.moved = true;
     }
 
-    // Smooth velocity tracking (px/ms)
     const instantV = dx / dt;
-    d.velocity = d.velocity * 0.65 + instantV * 0.35;
+    d.velocity = d.velocity * 0.6 + instantV * 0.4;
     d.lastX = e.clientX;
     d.lastTime = now;
 
-    // 1:1 finger tracking
-    const pixelsPerCard = faceWidth * 0.72;
-    progress.set(progress.get() - dx / pixelsPerCard);
+    // 1:1 finger tracking without drift
+    const pixelsPerCard = faceWidth * 0.8;
+    progress.set(d.startProgress - totalDx / pixelsPerCard);
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -223,15 +222,25 @@ const Carousel = memo(({ albums, initialAlbumId, onAlbumClick, onActiveChange }:
 
     if (!d.moved) return;
 
-    const pixelsPerCard = faceWidth * 0.72;
-    // Convert px/ms -> cards/sec
+    const pixelsPerCard = faceWidth * 0.8;
+    const totalDx = e.clientX - d.startX;
+    const draggedCards = -totalDx / pixelsPerCard;
     const velocityCardsPerSec = (-d.velocity * 1000) / pixelsPerCard;
+    const baseIndex = Math.round(d.startProgress);
 
-    // Project target based on applied flick force (wheel momentum)
-    const momentumCards = velocityCardsPerSec * 0.28;
-    const target = Math.round(progress.get() + momentumCards);
+    let target = baseIndex;
 
-    spinTo(target, velocityCardsPerSec);
+    if (Math.abs(velocityCardsPerSec) >= 3.2) {
+      // Deliberate hard flick: spin 2 to 3 cards max
+      const steps = Math.min(Math.max(2, Math.round(Math.abs(velocityCardsPerSec) * 0.25)), 3);
+      target = baseIndex + Math.sign(velocityCardsPerSec) * steps;
+    } else if (Math.abs(draggedCards) > 0.16 || Math.abs(velocityCardsPerSec) > 0.45) {
+      // Normal swipe: always move exactly 1 card (never skips the next album)
+      const dir = Math.sign(draggedCards || velocityCardsPerSec);
+      target = baseIndex + dir;
+    }
+
+    spinTo(target, Math.max(-6, Math.min(6, velocityCardsPerSec)));
   };
 
   const handleSelect = (albumId: string, cardOffset: number) => {
@@ -240,7 +249,7 @@ const Carousel = memo(({ albums, initialAlbumId, onAlbumClick, onActiveChange }:
     if (Math.abs(cardOffset) < 0.3) {
       onAlbumClick(albumId);
     } else {
-      const target = Math.round(progress.get() + Math.sign(cardOffset));
+      const target = Math.round(progress.get()) + Math.sign(cardOffset);
       spinTo(target);
     }
   };
