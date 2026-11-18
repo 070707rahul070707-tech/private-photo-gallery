@@ -8,7 +8,8 @@ import {
 } from "lucide-react";
 import { 
   getAlbumMediaSecure, 
-  uploadMediaSecure, 
+  getSignedUploadUrl,
+  saveUploadedMediaRecord,
   deleteMediaSecure, 
   setAlbumCoverSecure, 
   saveMediaOrderSecure 
@@ -68,21 +69,38 @@ export default function AlbumPage() {
     const filesArray = Array.from(files);
     const totalFiles = filesArray.length;
     let completed = 0;
+    let failedCount = 0;
     
-    // Upload files in batches of 3 to prevent server payload limits/timeouts
+    // Upload files directly to Supabase in batches of 3 (bypasses Vercel 4.5MB limit)
     const concurrencyLimit = 3; 
 
     for (let i = 0; i < totalFiles; i += concurrencyLimit) {
       const batch = filesArray.slice(i, i + concurrencyLimit);
       
       await Promise.all(batch.map(async (file) => {
-        const formData = new FormData();
-        formData.append("files", file);
-        
         try {
-          await uploadMediaSecure(formData, albumId);
-        } catch (err) {
+          // 1. Get a 1-time direct upload URL from the server
+          const { signedUrl, fileName } = await getSignedUploadUrl(file.name);
+
+          // 2. Upload directly from browser -> Supabase Storage
+          const res = await fetch(signedUrl, {
+            method: "PUT",
+            headers: {
+              "Content-Type": file.type || "application/octet-stream",
+            },
+            body: file,
+          });
+
+          if (!res.ok) {
+            throw new Error(`Storage upload failed (${res.status})`);
+          }
+
+          // 3. Save the uploaded file record to the database
+          await saveUploadedMediaRecord(albumId, fileName);
+        } catch (err: any) {
+          failedCount++;
           console.error(`Failed to upload ${file.name}`, err);
+          alert(`Failed to upload ${file.name}: ${err.message || "Unknown error"}`);
         } finally {
           completed++;
           setUploadProgress(Math.round((completed / totalFiles) * 100));
@@ -93,8 +111,7 @@ export default function AlbumPage() {
     setFiles(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     
-    // Give the database a brief moment to finish saving, then force Next.js to refresh
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Force Next.js to refresh and reload the album media
     router.refresh();
     await loadMedia();
     
@@ -102,6 +119,9 @@ export default function AlbumPage() {
     setTimeout(() => {
       setIsUploading(false);
       setUploadProgress(0);
+      if (failedCount > 0) {
+        alert(`${failedCount} file(s) failed to upload.`);
+      }
     }, 500);
   }
 
@@ -278,7 +298,7 @@ export default function AlbumPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-12">
           <div>
             <button
-              onClick={() => { window.location.href = "/albums"; }}
+              onClick={() => router.push("/albums")}
               className={`flex items-center gap-2 text-white/60 hover:text-white transition-colors mb-4 group w-fit ${isReorderMode ? 'opacity-50 pointer-events-none' : ''}`}
             >
               <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
@@ -409,6 +429,8 @@ export default function AlbumPage() {
                     <img
                       src={item.url}
                       alt={`Media ${index}`}
+                      loading="lazy"
+                      decoding="async"
                       className={`w-full h-full object-cover transition-transform duration-700 pointer-events-none ${!isReorderMode && 'group-hover:scale-110'}`}
                     />
                   )}

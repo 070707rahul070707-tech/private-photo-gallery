@@ -25,13 +25,13 @@ export async function getAlbumMediaSecure(albumId: string) {
       const { data: signData } = await supabase.storage
         .from("photos")
         .createSignedUrl(item.filename, 3600);
-        
+
       return {
         id: item.id,
         album_id: item.album_id,
-        url: signData?.signedUrl || "", 
+        url: signData?.signedUrl || "",
         filename: item.filename,
-        created_at: item.created_at
+        created_at: item.created_at,
       };
     })
   );
@@ -39,18 +39,52 @@ export async function getAlbumMediaSecure(albumId: string) {
   return mediaWithSignedUrls;
 }
 
+// 1. Generates a secure 1-time upload URL so the browser uploads directly to Supabase
+export async function getSignedUploadUrl(fileName: string) {
+  const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const uniqueName = `${Date.now()}-${sanitizedName}`;
+
+  const { data, error } = await supabase.storage
+    .from("photos")
+    .createSignedUploadUrl(uniqueName);
+
+  if (error || !data) {
+    console.error("Signed URL error:", error);
+    throw new Error(error?.message || "Failed to get upload URL");
+  }
+
+  return { signedUrl: data.signedUrl, fileName: uniqueName };
+}
+
+// 2. Saves the uploaded file record to the database after the direct upload finishes
+export async function saveUploadedMediaRecord(albumId: string, fileName: string) {
+  const { error } = await supabase.from("photos").insert([
+    {
+      album_id: albumId,
+      filename: fileName,
+      image_url: fileName,
+    },
+  ]);
+
+  if (error) {
+    console.error("Database insert error:", error);
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/", "layout");
+  return { success: true };
+}
+
 export async function uploadMediaSecure(formData: FormData, albumId: string) {
   const files = formData.getAll("files") as File[];
-  
+
   for (const file of files) {
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
     const fileName = `${Date.now()}-${sanitizedName}`;
-    
-    // 1. CONVERT FILE TO BUFFER
+
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    
-    // 2. Upload the raw buffer and specify the MIME type
+
     const { error: uploadError } = await supabase.storage
       .from("photos")
       .upload(fileName, buffer, {
@@ -62,20 +96,20 @@ export async function uploadMediaSecure(formData: FormData, albumId: string) {
       throw new Error(uploadError.message);
     }
 
-    const { error: dbError } = await supabase
-      .from("photos")
-      .insert([{
+    const { error: dbError } = await supabase.from("photos").insert([
+      {
         album_id: albumId,
         filename: fileName,
-        image_url: fileName, 
-      }]);
+        image_url: fileName,
+      },
+    ]);
 
     if (dbError) {
       console.error("Database insert error:", dbError);
       throw new Error(dbError.message);
     }
   }
-  
+
   revalidatePath("/", "layout");
   return { success: true };
 }
@@ -83,26 +117,28 @@ export async function uploadMediaSecure(formData: FormData, albumId: string) {
 export async function deleteMediaSecure(filename: string) {
   await supabase.storage.from("photos").remove([filename]);
   await supabase.from("photos").delete().eq("filename", filename);
-  
+
   revalidatePath("/", "layout");
   return { success: true };
 }
 
 export async function setAlbumCoverSecure(albumId: string, filename: string) {
   await supabase.from("albums").update({ cover_url: filename }).eq("id", albumId);
-  
+
   revalidatePath("/", "layout");
   return { success: true };
 }
 
-export async function saveMediaOrderSecure(orderItems: { id: string, created_at: string }[]) {
+export async function saveMediaOrderSecure(
+  orderItems: { id: string; created_at: string }[]
+) {
   for (const item of orderItems) {
     await supabase
       .from("photos")
       .update({ created_at: item.created_at })
       .eq("id", item.id);
   }
-  
+
   revalidatePath("/", "layout");
   return { success: true };
 }

@@ -21,6 +21,7 @@ export default function AlbumsPage() {
   const router = useRouter();
   const [albums, setAlbums] = useState<Album[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [initialAlbumId, setInitialAlbumId] = useState<string | null>(null);
 
   // This tracks which album is currently in the center of the 3D cylinder
   const [centeredAlbum, setCenteredAlbum] = useState<Album | null>(null);
@@ -39,6 +40,11 @@ export default function AlbumsPage() {
         window.location.href = "/";
         return;
       }
+
+      // Read the last opened album ID before loading
+      const savedId = sessionStorage.getItem("lastAlbumId");
+      if (savedId) setInitialAlbumId(savedId);
+
       try {
         const secureAlbums = await getAlbumsSecure();
         setAlbums(secureAlbums);
@@ -57,7 +63,7 @@ export default function AlbumsPage() {
     setIsSubmitting(true);
     const { data, error } = await createAlbumSecure(newAlbumName.trim());
     if (!error && data) {
-      setAlbums([{...data, cover_url: null}, ...albums]);
+      setAlbums([{ ...data, cover_url: null }, ...albums]);
       setIsCreateOpen(false);
       setNewAlbumName("");
     }
@@ -74,7 +80,6 @@ export default function AlbumsPage() {
       setIsRenameOpen(false);
       setActiveAlbum(null);
       setNewAlbumName("");
-      // Updates the center title instantly
       if (centeredAlbum?.id === activeAlbum.id) {
         setCenteredAlbum({ ...centeredAlbum, name: newAlbumName.trim() });
       }
@@ -97,6 +102,7 @@ export default function AlbumsPage() {
   const handleLogout = async () => {
     await logoutGallery();
     localStorage.removeItem("gallery-auth");
+    sessionStorage.removeItem("lastAlbumId");
     window.location.href = "/";
   };
 
@@ -111,6 +117,8 @@ export default function AlbumsPage() {
   };
 
   const handleAlbumClick = (id: string) => {
+    // Remember this album so pressing Back returns directly to it
+    sessionStorage.setItem("lastAlbumId", id);
     router.push(`/album?id=${id}`);
   };
 
@@ -134,7 +142,6 @@ export default function AlbumsPage() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4 flex-wrap z-50">
-            {/* The Edit and Delete icons are securely placed here next to Create! */}
             {centeredAlbum && albums.length > 0 && (
               <div className="flex items-center gap-2 mr-2">
                 <button onClick={() => handleMenuClick(centeredAlbum, 'rename')} className="p-3 rounded-full bg-black/60 border border-white/10 text-white hover:bg-white/20 backdrop-blur-md transition-all shadow-[0_4px_30px_rgba(0,0,0,0.1)]" title="Rename Centered Album">
@@ -163,7 +170,12 @@ export default function AlbumsPage() {
               <p className="text-[#9ca3af] font-light">No albums yet. Create one to get started.</p>
             </div>
           ) : (
-            <ThreeDAlbumCarousel albums={albums} onAlbumClick={handleAlbumClick} onActiveChange={setCenteredAlbum} />
+            <ThreeDAlbumCarousel
+              albums={albums}
+              initialAlbumId={initialAlbumId}
+              onAlbumClick={handleAlbumClick}
+              onActiveChange={setCenteredAlbum}
+            />
           )}
         </div>
       </div>
